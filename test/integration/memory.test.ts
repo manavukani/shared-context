@@ -1,0 +1,103 @@
+import { afterEach, describe, it } from "node:test";
+import { MemoryService } from "../../src/memory/service.js";
+import { ResultFormat } from "../../src/memory/format.js";
+import type { ContextSession } from "../../src/session.js";
+import { expect } from "../expect.js";
+import { openSession } from "../helpers.js";
+
+describe("MemoryService", () => {
+  let session: ContextSession;
+
+  afterEach(() => {
+    session?.close();
+  });
+
+  it("saves, retrieves, and deduplicates project memories", async () => {
+    ({ session } = openSession());
+    MemoryService.addProject(session, { id: "issuer-ui", name: "Issuer UI" });
+
+    const discovery = await MemoryService.saveDiscovery(session, {
+      projectId: "issuer-ui",
+      title: "PKCE required",
+      body: "Public clients must use PKCE on the token endpoint.",
+      source: "claude-code",
+    });
+    expect(discovery.saved).toBe(true);
+
+    const again = await MemoryService.saveDiscovery(session, {
+      projectId: "issuer-ui",
+      title: "PKCE required",
+      body: "Public clients must use PKCE on the token endpoint.",
+      source: "cursor",
+    });
+    expect(again.duplicate).toBe(true);
+    expect(again.memory.id).toBe(discovery.memory.id);
+
+    const decision = await MemoryService.saveDecision(session, {
+      projectId: "issuer-ui",
+      title: "Use auth code + PKCE",
+      body: "Skip implicit flow; auth code with PKCE only.",
+      source: "augment",
+    });
+    expect(decision.saved).toBe(true);
+
+    await MemoryService.updateCurrentWork(session, {
+      projectId: "issuer-ui",
+      body: "Implementing the OAuth callback page.",
+      source: "cursor",
+    });
+
+    const ctx = MemoryService.getProjectContext(session, "issuer-ui");
+    expect(ctx.discoveries).toHaveLength(1);
+    expect(ctx.decisions).toHaveLength(1);
+    expect(ctx.currentWork).toContain("OAuth callback");
+
+    const hits = await MemoryService.search(session, { query: "PKCE" });
+    expect(hits.some((hit) => hit.title.includes("PKCE"))).toBe(true);
+
+    const standup = await MemoryService.updateStandup(session, { generate: true });
+    expect(standup).toHaveLength(1);
+    expect(standup[0]?.sentence.length).toBeGreaterThan(0);
+    expect(standup[0]?.sentence.includes("\n")).toBe(false);
+
+    const formatted = ResultFormat.projectContext(ctx);
+    expect(formatted).toContain("issuer-ui");
+    expect(formatted).toContain("PKCE");
+  });
+
+  it("redacts secrets and never stores them", async () => {
+    ({ session } = openSession());
+    MemoryService.addProject(session, { id: "issuer-ui" });
+    const result = await MemoryService.saveDiscovery(session, {
+      projectId: "issuer-ui",
+      title: "Token leak",
+      body: "Do not commit sk-abcdefghijklmnopqrstuvwxyz123456 in .env",
+      source: "cli",
+    });
+    expect(result.memory.body).toContain("[REDACTED]");
+    expect(result.memory.body).not.toContain("sk-abcdefghijklmnopqrstuvwxyz123456");
+  });
+
+  it("keeps stand-up global and one sentence per project", async () => {
+    ({ session } = openSession());
+    MemoryService.addProject(session, { id: "issuer-ui" });
+    MemoryService.addProject(session, { id: "billing-api" });
+    await MemoryService.updateStandup(session, {
+      items: [
+        { projectId: "issuer-ui", sentence: "Shipping OAuth refresh. Extra sentence should be dropped!" },
+        { projectId: "billing-api", sentence: "Investigating invoice retries." },
+      ],
+    });
+    const items = MemoryService.getStandup(session);
+    expect(items).toHaveLength(2);
+    expect(items.find((i) => i.projectId === "issuer-ui")?.sentence).toBe("Shipping OAuth refresh.");
+  });
+
+  it("scopes cwd to the registered repo path", async () => {
+    ({ session } = openSession());
+    MemoryService.addProject(session, { id: "issuer-ui", repoPath: "/tmp/work/issuer-ui" });
+    MemoryService.addProject(session, { id: "other", repoPath: "/tmp/work/other" });
+    const id = MemoryService.resolveProjectId(session, undefined, "/tmp/work/issuer-ui/src");
+    expect(id).toBe("issuer-ui");
+  });
+});

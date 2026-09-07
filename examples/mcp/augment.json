@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "shared-context": {
+      "type": "stdio",
+      "command": "node",
+      "args": ["/ABS/PATH/shared-context/dist/mcp/index.js"]
+    }
+  }
+}
