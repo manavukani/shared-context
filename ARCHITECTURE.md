@@ -20,7 +20,7 @@ src/paths.ts   Storage layout + AI_CONTEXT_HOME / AI_CONTEXT_DB overrides
 
 ## Storage layout
 
-Default home: `~/Documents/ai-context` (override with `AI_CONTEXT_HOME`). `AI_CONTEXT_DB` may point at a specific SQLite file.
+Default home: `~/.ai-context` (override with `AI_CONTEXT_HOME`). `AI_CONTEXT_DB` may point at a specific SQLite file. Avoid storing SQLite under iCloud-synced `~/Documents`.
 
 ```
 config.json

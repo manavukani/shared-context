@@ -17,8 +17,10 @@ Read this before wiring the MCP server into a harness:
 
 ## Storage
 
-Default home: `~/Documents/ai-context` (override with `--home` or `AI_CONTEXT_HOME`).
+Default home: `~/.ai-context` (override with `--home` or `AI_CONTEXT_HOME`).
 CLI and MCP entrypoints load a `.env` file from the process working directory (existing environment variables win). `AI_CONTEXT_DB` optionally overrides the SQLite file path (otherwise `db/context.sqlite` under the home).
+
+The previous default (`~/Documents/ai-context`) sat on iCloud Drive on many Macs; SQLite WAL files under a file-sync daemon can corrupt. Existing data can be pointed at with `AI_CONTEXT_HOME`.
 
 ```
 config.json

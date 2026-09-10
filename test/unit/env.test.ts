@@ -53,4 +53,18 @@ describe("ContextPaths", () => {
       }
     }
   });
+
+  it("defaults home to ~/.ai-context outside iCloud Documents", () => {
+    const prev = process.env.AI_CONTEXT_HOME;
+    delete process.env.AI_CONTEXT_HOME;
+    try {
+      const home = ContextPaths.resolve().home;
+      expect(home.endsWith(".ai-context")).toBe(true);
+      expect(home.includes(`${join("Documents", "ai-context")}`)).toBe(false);
+    } finally {
+      if (prev !== undefined) {
+        process.env.AI_CONTEXT_HOME = prev;
+      }
+    }
+  });
 });

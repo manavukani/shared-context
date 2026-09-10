@@ -37,7 +37,7 @@ program.hook("preAction", (thisCommand) => {
 
 program
   .command("init")
-  .description("Create ~/Documents/ai-context (or --home) and migrate SQLite")
+  .description("Create ~/.ai-context (or --home) and migrate SQLite")
   .action(async () => {
     try {
       const home = program.opts<{ home?: string }>().home;

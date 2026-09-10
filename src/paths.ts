@@ -12,7 +12,7 @@ export class ContextPaths {
     const home =
       homeOverride ??
       process.env.AI_CONTEXT_HOME ??
-      join(homedir(), "Documents", "ai-context");
+      join(homedir(), ".ai-context");
     return new ContextPaths(home);
   }
 
