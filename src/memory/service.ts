@@ -454,12 +454,13 @@ export class MemoryService {
         aiStatus = "error";
       }
     }
-    const healthy = missing.length === 0 && Boolean(fts);
+    const healthy = missing.length === 0 && Boolean(fts) && !session.config.error;
     return {
       healthy,
       home: session.paths.home,
       sqlite: session.paths.sqlitePath,
       config: session.paths.configFile,
+      configError: session.config.error,
       projects: MemoryService.listProjects(session).length,
       memories: session.db.select().from(memories).all().length,
       missingTables: missing,

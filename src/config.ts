@@ -1,4 +1,4 @@
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 
 export type AiConfig = {
@@ -25,6 +25,7 @@ export class AppConfig {
   constructor(
     readonly path: string,
     readonly data: AppConfigData,
+    readonly error: string | null = null,
   ) {}
 
   static defaults(): AppConfigData {
@@ -32,8 +33,16 @@ export class AppConfig {
   }
 
   static load(path: string): AppConfig {
+    if (!existsSync(path)) {
+      return new AppConfig(path, AppConfig.defaults());
+    }
     try {
-      const parsed = JSON.parse(readFileSync(path, "utf8")) as Partial<AppConfigData>;
+      const parsed = JSON.parse(readFileSync(path, "utf8")) as Partial<AppConfigData> & {
+        ai?: Partial<AiConfig> & { enabled?: unknown };
+      };
+      if (parsed.ai && parsed.ai.enabled !== undefined && typeof parsed.ai.enabled !== "boolean") {
+        throw new Error("ai.enabled must be a boolean");
+      }
       const data: AppConfigData = {
         version: 1,
         ai: {
@@ -43,8 +52,9 @@ export class AppConfig {
         },
       };
       return new AppConfig(path, data);
-    } catch {
-      return new AppConfig(path, AppConfig.defaults());
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      return new AppConfig(path, AppConfig.defaults(), message);
     }
   }
 
