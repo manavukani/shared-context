@@ -5,6 +5,7 @@ export type AiConfig = {
   enabled: boolean;
   model: string;
   embeddingModel: string;
+  baseUrl?: string;
 };
 
 export type AppConfigData = {
@@ -49,6 +50,7 @@ export class AppConfig {
           enabled: parsed.ai?.enabled ?? true,
           model: parsed.ai?.model ?? DEFAULT_CONFIG.ai.model,
           embeddingModel: parsed.ai?.embeddingModel ?? DEFAULT_CONFIG.ai.embeddingModel,
+          baseUrl: typeof parsed.ai?.baseUrl === "string" ? parsed.ai.baseUrl : undefined,
         },
       };
       return new AppConfig(path, data);

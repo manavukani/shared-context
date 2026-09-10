@@ -52,4 +52,27 @@ describe("OpenAiLayer", () => {
     expect(embedding?.[0]).toBe(1);
     expect(OpenAiLayer.lastError).toBe(null);
   });
+
+  it("uses ai.baseUrl and OPENAI_BASE_URL for requests", async () => {
+    const prev = process.env.OPENAI_BASE_URL;
+    process.env.OPENAI_BASE_URL = "http://127.0.0.1:9/v1";
+    try {
+      let seen = "";
+      const fetchFn = (async (input: RequestInfo | URL) => {
+        seen = String(input);
+        return new Response(JSON.stringify({ data: [{ embedding: [0] }] }), { status: 200 });
+      }) as typeof fetch;
+      const data = AppConfig.defaults();
+      data.ai.baseUrl = "http://ignored.example/v1";
+      const ai = new OpenAiLayer(new AppConfig("/tmp/config.json", data), "sk-test", fetchFn);
+      await ai.embed("x");
+      expect(seen).toContain("http://127.0.0.1:9/v1/embeddings");
+    } finally {
+      if (prev === undefined) {
+        delete process.env.OPENAI_BASE_URL;
+      } else {
+        process.env.OPENAI_BASE_URL = prev;
+      }
+    }
+  });
 });

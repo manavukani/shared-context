@@ -19,10 +19,17 @@ export class OpenAiLayer {
   readonly status: AiStatus;
   readonly model: string;
   readonly embeddingModel: string;
+  readonly baseUrl: string;
 
   constructor(config: AppConfig, apiKey = process.env.OPENAI_API_KEY, fetchFn?: typeof fetch) {
     this.model = config.data.ai.model;
     this.embeddingModel = config.data.ai.embeddingModel;
+    this.baseUrl = (
+      process.env.OPENAI_BASE_URL ||
+      process.env.AI_CONTEXT_OPENAI_BASE_URL ||
+      config.data.ai.baseUrl ||
+      "https://api.openai.com/v1"
+    ).replace(/\/$/, "");
     this.apiKey = apiKey || undefined;
     this.fetchFn = fetchFn ?? OpenAiLayer.fetchFn;
     if (!config.aiEnabled) {
@@ -79,7 +86,7 @@ export class OpenAiLayer {
     const json = await this.post<ChatResponse>("/chat/completions", {
       model: this.model,
       temperature: 0.2,
-      max_tokens: 120,
+      max_completion_tokens: 120,
       messages: [
         { role: "system", content: instruction },
         { role: "user", content: text.slice(0, 4000) },
@@ -92,7 +99,7 @@ export class OpenAiLayer {
     const json = await this.post<ChatResponse>("/chat/completions", {
       model: this.model,
       temperature: 0,
-      max_tokens: 10,
+      max_completion_tokens: 10,
       messages: [
         {
           role: "system",
@@ -134,7 +141,7 @@ export class OpenAiLayer {
     if (!this.apiKey || this.status === "off") {
       return null;
     }
-    const url = `https://api.openai.com/v1${path}`;
+    const url = `${this.baseUrl}${path}`;
     let lastDetail = "";
     for (let attempt = 0; attempt <= OpenAiLayer.retries; attempt += 1) {
       try {
