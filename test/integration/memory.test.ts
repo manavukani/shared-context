@@ -137,4 +137,40 @@ describe("MemoryService", () => {
     expect(health.aiError).toContain("HTTP 401");
     OpenAiLayer.lastError = null;
   });
+
+  it("embeds a memory only once when AI is enabled", async () => {
+    ({ session } = openSession());
+    MemoryService.addProject(session, { id: "issuer-ui" });
+    const prevKey = process.env.OPENAI_API_KEY;
+    const prevFetch = OpenAiLayer.fetchFn;
+    process.env.OPENAI_API_KEY = "sk-test";
+    let embeds = 0;
+    OpenAiLayer.fetchFn = (async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("/embeddings")) {
+        embeds += 1;
+        return new Response(JSON.stringify({ data: [{ embedding: [1, 0, 0] }] }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      }
+      return new Response(JSON.stringify({ choices: [{ message: { content: "discovery" } }] }), { status: 200 });
+    }) as typeof fetch;
+    try {
+      await MemoryService.saveDiscovery(session, {
+        projectId: "issuer-ui",
+        title: "Once",
+        body: "Embed this text a single time.",
+        source: "cli",
+      });
+      expect(embeds).toBe(1);
+    } finally {
+      OpenAiLayer.fetchFn = prevFetch;
+      if (prevKey === undefined) {
+        delete process.env.OPENAI_API_KEY;
+      } else {
+        process.env.OPENAI_API_KEY = prevKey;
+      }
+    }
+  });
 });

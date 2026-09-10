@@ -12,6 +12,7 @@ type EmbeddingResponse = {
 
 export class OpenAiLayer {
   static lastError: string | null = null;
+  static fetchFn: typeof fetch = globalThis.fetch.bind(globalThis);
 
   private readonly apiKey: string | undefined;
   private readonly fetchFn: typeof fetch;
@@ -23,7 +24,7 @@ export class OpenAiLayer {
     this.model = config.data.ai.model;
     this.embeddingModel = config.data.ai.embeddingModel;
     this.apiKey = apiKey || undefined;
-    this.fetchFn = fetchFn ?? globalThis.fetch.bind(globalThis);
+    this.fetchFn = fetchFn ?? OpenAiLayer.fetchFn;
     if (!config.aiEnabled) {
       this.status = "off";
       return;

@@ -163,12 +163,12 @@ export class MemoryService {
       Logger.info(session, "memory.duplicate", `${kind} ${duplicate.id}`, projectId);
       return { saved: false, duplicate: true as const, memory: duplicate };
     }
-    const semanticDup = await MemoryService.findSemanticDuplicate(session, ai, projectId, kind, `${title}\n${body}`);
-    if (semanticDup) {
-      Logger.info(session, "memory.duplicate", `${kind} semantic ${semanticDup.id}`, projectId);
-      return { saved: false, duplicate: true as const, memory: semanticDup };
+    const semantic = await MemoryService.findSemanticDuplicate(session, ai, projectId, kind, `${title}\n${body}`);
+    if (semantic.duplicate) {
+      Logger.info(session, "memory.duplicate", `${kind} semantic ${semantic.duplicate.id}`, projectId);
+      return { saved: false, duplicate: true as const, memory: semantic.duplicate };
     }
-    const embedding = await ai.embed(`${title}\n${body}`);
+    const embedding = semantic.embedding;
     const now = Date.now();
     const id = crypto.randomUUID();
     session.db
@@ -555,11 +555,11 @@ export class MemoryService {
     text: string,
   ) {
     if (!ai.enabled) {
-      return null;
+      return { duplicate: null, embedding: null };
     }
     const embedding = await ai.embed(text);
     if (!embedding) {
-      return null;
+      return { duplicate: null, embedding: null };
     }
     const candidates = session.db
       .select()
@@ -579,6 +579,6 @@ export class MemoryService {
         bestScore = score;
       }
     }
-    return bestScore >= 0.92 ? best : null;
+    return { duplicate: bestScore >= 0.92 ? best : null, embedding };
   }
 }
