@@ -20,6 +20,20 @@ describe("SecretRedactor", () => {
     expect(out).toContain("[REDACTED]");
   });
 
+  it("does not redact ordinary assignment prose", () => {
+    const a = "authorization: required for all endpoints";
+    const b = "secret = whatever the product team decides";
+    expect(SecretRedactor.redact(a)).toBe(a);
+    expect(SecretRedactor.redact(b)).toBe(b);
+  });
+
+  it("redacts only the secret value and keeps the keyword", () => {
+    const out = SecretRedactor.redact("api_key=abcdEFGH12345678");
+    expect(out.toLowerCase()).toContain("api_key");
+    expect(out).toContain("[REDACTED]");
+    expect(out).not.toContain("abcdEFGH12345678");
+  });
+
   it("leaves ordinary notes alone", () => {
     const note = "The issuer-ui login form uses session cookies.";
     expect(SecretRedactor.redact(note)).toBe(note);
