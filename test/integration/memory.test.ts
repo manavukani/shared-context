@@ -142,6 +142,19 @@ describe("MemoryService", () => {
     expect(MemoryService.listProjects(session)).toHaveLength(0);
   });
 
+  it("throws when a project row is missing instead of asserting non-null", async () => {
+    ({ session } = openSession());
+    MemoryService.addProject(session, { id: "issuer-ui" });
+    await MemoryService.removeProject(session, "issuer-ui");
+    let threw = false;
+    try {
+      MemoryService.requireProject(session, "issuer-ui");
+    } catch (error) {
+      threw = error instanceof Error && error.message.includes("Unknown project");
+    }
+    expect(threw).toBe(true);
+  });
+
   it("includes AI errors on doctor output", async () => {
     ({ session } = openSession());
     OpenAiLayer.lastError = "[shared-context] openai /chat/completions HTTP 401";

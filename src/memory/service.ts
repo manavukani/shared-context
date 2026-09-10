@@ -2,7 +2,7 @@ import { and, desc, eq, isNotNull } from "drizzle-orm";
 import { resolve } from "node:path";
 import { rmSync } from "node:fs";
 import { OpenAiLayer } from "../ai/openai.js";
-import { currentWork, memories, projects, standupItems } from "../db/schema.js";
+import { currentWork, memories, projects, standupItems, type ProjectRow } from "../db/schema.js";
 import { ContentHash } from "../hash.js";
 import { Logger } from "../logging/logger.js";
 import { SecretRedactor } from "../secrets.js";
@@ -126,6 +126,14 @@ export class MemoryService {
     throw new Error("Pass projectId (or add --repo when creating the project so cwd can be matched).");
   }
 
+  static requireProject(session: ContextSession, id: string): ProjectRow {
+    const row = session.db.select().from(projects).where(eq(projects.id, id)).get();
+    if (!row) {
+      throw new Error(`Unknown project '${id}'. Run: context project add ${id}`);
+    }
+    return row;
+  }
+
   static async saveDiscovery(session: ContextSession, input: SaveMemoryInput) {
     return MemoryService.saveMemory(session, { ...input, kind: "discovery" });
   }
@@ -185,10 +193,14 @@ export class MemoryService {
       .run();
     await SyncEngine.exportMemories(session, projectId, kind);
     Logger.info(session, "memory.save", `${kind} ${id} ${title}`, projectId);
+    const memory = session.db.select().from(memories).where(eq(memories.id, id)).get();
+    if (!memory) {
+      throw new Error("failed to load saved memory");
+    }
     return {
       saved: true,
       duplicate: false as const,
-      memory: session.db.select().from(memories).where(eq(memories.id, id)).get()!,
+      memory,
     };
   }
 
@@ -243,7 +255,11 @@ export class MemoryService {
       .run();
     await SyncEngine.exportMemories(session, row.projectId, kind);
     Logger.info(session, "memory.edit", `${kind} ${row.id} ${title}`, row.projectId);
-    return session.db.select().from(memories).where(eq(memories.id, row.id)).get()!;
+    const updated = session.db.select().from(memories).where(eq(memories.id, row.id)).get();
+    if (!updated) {
+      throw new Error(`Unknown memory '${row.id}'`);
+    }
+    return updated;
   }
 
   static async updateCurrentWork(
@@ -280,14 +296,14 @@ export class MemoryService {
   static getCurrentWork(session: ContextSession, projectId?: string, cwd?: string) {
     const id = MemoryService.resolveProjectId(session, projectId, cwd);
     const row = session.db.select().from(currentWork).where(eq(currentWork.projectId, id)).get();
-    const project = session.db.select().from(projects).where(eq(projects.id, id)).get()!;
+    const project = MemoryService.requireProject(session, id);
     Logger.info(session, "current_work.get", "ok", id);
     return { project, currentWork: row?.body ?? "" };
   }
 
   static getProjectContext(session: ContextSession, projectId?: string, cwd?: string) {
     const id = MemoryService.resolveProjectId(session, projectId, cwd);
-    const project = session.db.select().from(projects).where(eq(projects.id, id)).get()!;
+    const project = MemoryService.requireProject(session, id);
     const work = session.db.select().from(currentWork).where(eq(currentWork.projectId, id)).get();
     const recent = session.db
       .select()
