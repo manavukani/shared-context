@@ -394,7 +394,7 @@ export class MemoryService {
           .run();
       }
     }
-    const items = input.items ?? [];
+    const items = [...(input.items ?? [])];
     if (input.projectId && input.sentence) {
       items.push({ projectId: input.projectId, sentence: input.sentence });
     }

@@ -94,6 +94,20 @@ describe("MemoryService", () => {
     expect(items.find((i) => i.projectId === "issuer-ui")?.sentence).toBe("Shipping OAuth refresh.");
   });
 
+  it("does not mutate the caller items array on standup update", async () => {
+    ({ session } = openSession());
+    MemoryService.addProject(session, { id: "issuer-ui" });
+    MemoryService.addProject(session, { id: "other" });
+    const items = [{ projectId: "issuer-ui", sentence: "Original caller row." }];
+    await MemoryService.updateStandup(session, {
+      items,
+      projectId: "other",
+      sentence: "Second project line.",
+    });
+    expect(items).toHaveLength(1);
+    expect(items[0]?.projectId).toBe("issuer-ui");
+  });
+
   it("scopes cwd to the registered repo path", async () => {
     ({ session } = openSession());
     MemoryService.addProject(session, { id: "issuer-ui", repoPath: "/tmp/work/issuer-ui" });
