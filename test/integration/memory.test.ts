@@ -121,6 +121,19 @@ describe("MemoryService", () => {
     expect(MemoryService.cwdMatchesRepo("/tmp/work/issuer-ui/src", "/tmp/work/issuer-ui")).toBe(true);
   });
 
+  it("does not match kind-only FTS queries", async () => {
+    ({ session } = openSession());
+    MemoryService.addProject(session, { id: "issuer-ui" });
+    await MemoryService.saveDiscovery(session, {
+      projectId: "issuer-ui",
+      title: "OAuth callback",
+      body: "The redirect URI must match exactly.",
+      source: "cli",
+    });
+    const hits = await MemoryService.search(session, { query: "discovery" });
+    expect(hits.some((hit) => hit.title === "OAuth callback")).toBe(false);
+  });
+
   it("edits and deletes memories and can remove a project", async () => {
     ({ session } = openSession());
     MemoryService.addProject(session, { id: "issuer-ui" });

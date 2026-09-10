@@ -40,11 +40,17 @@ export class DatabaseClient {
   }
 
   ensureFts(): void {
+    const existing = this.sqlite.prepare("SELECT sql FROM sqlite_master WHERE name = 'memory_fts'").get() as
+      | { sql: string }
+      | undefined;
+    if (existing?.sql && !/kind\s+UNINDEXED/i.test(existing.sql)) {
+      this.sqlite.exec("DROP TABLE IF EXISTS memory_fts");
+    }
     this.sqlite.exec(`
       CREATE VIRTUAL TABLE IF NOT EXISTS memory_fts USING fts5(
         memory_id UNINDEXED,
         project_id UNINDEXED,
-        kind,
+        kind UNINDEXED,
         title,
         body,
         tokenize = 'porter unicode61'
