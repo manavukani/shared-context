@@ -37,6 +37,7 @@ describe("MCP tools", () => {
     const names = listed.tools.map((tool) => tool.name).sort();
     expect(names).toEqual(
       [
+        "add_project",
         "get_current_work",
         "get_project_context",
         "get_standup",
@@ -97,6 +98,21 @@ describe("MCP tools", () => {
     });
     const standup = await client.callTool({ name: "get_standup", arguments: {} });
     expect(textOf(standup)).toContain("issuer-ui");
+  });
+
+  it("registers a project through add_project", async () => {
+    ({ session } = openSession());
+    ({ client } = await connectClient(session));
+    const added = await client.callTool({
+      name: "add_project",
+      arguments: { projectId: "issuer-ui", name: "Issuer UI", repoPath: "/tmp/work/issuer-ui" },
+    });
+    expect(textOf(added)).toContain("added issuer-ui");
+    const ctx = await client.callTool({
+      name: "get_project_context",
+      arguments: { projectId: "issuer-ui" },
+    });
+    expect(textOf(ctx)).toContain("Issuer UI");
   });
 
   it("validates inputs before mutating", async () => {

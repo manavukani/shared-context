@@ -3,6 +3,7 @@ import * as z from "zod/v4";
 import { MemoryService } from "../memory/service.js";
 import { ResultFormat } from "../memory/format.js";
 import type { ContextSession } from "../session.js";
+import { SyncEngine } from "../sync/engine.js";
 
 export const CLIENT_INSTRUCTIONS = `Shared local memory for this machine. Use it to keep Claude Code, Cursor, and Augment Code aligned.
 
@@ -35,6 +36,25 @@ export class SharedContextServer {
         instructions: CLIENT_INSTRUCTIONS,
         capabilities: { tools: {} },
       },
+    );
+
+    server.registerTool(
+      "add_project",
+      {
+        title: "Add project",
+        description: "Register or update a project so cwd/repo matching and other tools can resolve it.",
+        inputSchema: z.object({
+          projectId: z.string().regex(/^[a-z0-9][a-z0-9-]{0,63}$/).describe("Project slug, e.g. issuer-ui"),
+          name: z.string().min(1).max(200).optional(),
+          repoPath: z.string().optional().describe("Local repo path used to auto-scope tools from cwd"),
+        }),
+      },
+      async ({ projectId, name, repoPath }) =>
+        SharedContextServer.guard(async () => {
+          const result = MemoryService.addProject(session, { id: projectId, name, repoPath });
+          await SyncEngine.exportAll(session);
+          return `${result.created ? "added" : "updated"} ${result.id} (${result.name})`;
+        }),
     );
 
     server.registerTool(
