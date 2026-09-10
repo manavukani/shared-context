@@ -142,27 +142,29 @@ memory
   .requiredOption("--title <title>", "Short title")
   .requiredOption("--body <body>", "Details")
   .option("--source <source>", "claude-code | cursor | augment | cli", "cli")
-  .action(async (opts: { kind: string; project?: string; cwd?: string; title: string; body: string; source?: string }) => {
-    try {
-      if (opts.kind !== "discovery" && opts.kind !== "decision") {
-        throw new Error("--kind must be discovery or decision");
-      }
-      const kind = opts.kind;
-      await withSession(program.opts<{ home?: string }>().home, async (session) => {
-        const result = await MemoryService.saveMemory(session, {
-          kind,
-          projectId: opts.project,
-          cwd: opts.cwd ?? program.opts<{ cwd?: string }>().cwd,
-          title: opts.title,
-          body: opts.body,
-          source: opts.source,
+  .action(
+    async (opts: { kind: string; project?: string; cwd?: string; title: string; body: string; source?: string }) => {
+      try {
+        if (opts.kind !== "discovery" && opts.kind !== "decision") {
+          throw new Error("--kind must be discovery or decision");
+        }
+        const kind = opts.kind;
+        await withSession(program.opts<{ home?: string }>().home, async (session) => {
+          const result = await MemoryService.saveMemory(session, {
+            kind,
+            projectId: opts.project,
+            cwd: opts.cwd ?? program.opts<{ cwd?: string }>().cwd,
+            title: opts.title,
+            body: opts.body,
+            source: opts.source,
+          });
+          process.stdout.write(ResultFormat.saved(result));
         });
-        process.stdout.write(ResultFormat.saved(result));
-      });
-    } catch (error) {
-      fail(error);
-    }
-  });
+      } catch (error) {
+        fail(error);
+      }
+    },
+  );
 
 memory
   .command("delete")
@@ -246,7 +248,11 @@ work
   .action(async (opts: { project?: string; cwd?: string }) => {
     try {
       await withSession(program.opts<{ home?: string }>().home, (session) => {
-        const ctx = MemoryService.getCurrentWork(session, opts.project, opts.cwd ?? program.opts<{ cwd?: string }>().cwd);
+        const ctx = MemoryService.getCurrentWork(
+          session,
+          opts.project,
+          opts.cwd ?? program.opts<{ cwd?: string }>().cwd,
+        );
         process.stdout.write(ResultFormat.currentWork(ctx.project, ctx.currentWork));
       });
     } catch (error) {
@@ -270,10 +276,9 @@ work
           body: opts.body,
           source: opts.source,
         });
-        process.stdout.write(ResultFormat.currentWork(
-          MemoryService.getCurrentWork(session, result.projectId).project,
-          result.body,
-        ));
+        process.stdout.write(
+          ResultFormat.currentWork(MemoryService.getCurrentWork(session, result.projectId).project, result.body),
+        );
       });
     } catch (error) {
       fail(error);
@@ -293,10 +298,9 @@ work
           opts.project,
           opts.cwd ?? program.opts<{ cwd?: string }>().cwd,
         );
-        process.stdout.write(ResultFormat.currentWork(
-          MemoryService.getCurrentWork(session, result.projectId).project,
-          result.body,
-        ));
+        process.stdout.write(
+          ResultFormat.currentWork(MemoryService.getCurrentWork(session, result.projectId).project, result.body),
+        );
       });
     } catch (error) {
       fail(error);

@@ -24,9 +24,7 @@ export const memories = sqliteTable(
     createdAt: integer("created_at").notNull(),
     updatedAt: integer("updated_at").notNull(),
   },
-  (table) => [
-    uniqueIndex("memories_project_kind_hash").on(table.projectId, table.kind, table.contentHash),
-  ],
+  (table) => [uniqueIndex("memories_project_kind_hash").on(table.projectId, table.kind, table.contentHash)],
 );
 
 export const currentWork = sqliteTable("current_work", {

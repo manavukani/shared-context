@@ -85,15 +85,15 @@ describe("markdown sync", () => {
       "utf8",
     );
     await SyncEngine.importThenExport(session);
-    const memory = session.sqlite.prepare("SELECT body FROM memories WHERE id = ?").get(
-      "44444444-4444-4444-8444-444444444444",
-    ) as { body: string };
+    const memory = session.sqlite
+      .prepare("SELECT body FROM memories WHERE id = ?")
+      .get("44444444-4444-4444-8444-444444444444") as { body: string };
     const work = session.sqlite.prepare("SELECT body FROM current_work WHERE project_id = ?").get("issuer-ui") as {
       body: string;
     };
-    const standup = session.sqlite.prepare("SELECT sentence FROM standup_items WHERE project_id = ?").get(
-      "issuer-ui",
-    ) as { sentence: string };
+    const standup = session.sqlite
+      .prepare("SELECT sentence FROM standup_items WHERE project_id = ?")
+      .get("issuer-ui") as { sentence: string };
     expect(memory.body).toContain("[REDACTED]");
     expect(memory.body).not.toContain("sk-abcdefghijklmnopqrstuvwxyz123456");
     expect(work.body).toContain("[REDACTED]");

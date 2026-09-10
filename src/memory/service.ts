@@ -100,7 +100,11 @@ export class MemoryService {
   }
 
   static listProjects(session: ContextSession) {
-    return session.db.select().from(projects).all().sort((a, b) => a.id.localeCompare(b.id));
+    return session.db
+      .select()
+      .from(projects)
+      .all()
+      .sort((a, b) => a.id.localeCompare(b.id));
   }
 
   static resolveProjectId(session: ContextSession, projectId?: string, cwd?: string): string {
@@ -400,7 +404,11 @@ export class MemoryService {
   }
 
   static getStandup(session: ContextSession) {
-    const items = session.db.select().from(standupItems).all().sort((a, b) => a.projectId.localeCompare(b.projectId));
+    const items = session.db
+      .select()
+      .from(standupItems)
+      .all()
+      .sort((a, b) => a.projectId.localeCompare(b.projectId));
     Logger.info(session, "standup.get", `${items.length} item(s)`);
     return items;
   }

@@ -67,16 +67,16 @@ context project add issuer-ui --name "Issuer UI" --repo /path/to/issuer-ui
 
 ## MCP tools
 
-| Tool | Purpose |
-|---|---|
+| Tool                  | Purpose                                                     |
+| --------------------- | ----------------------------------------------------------- |
 | `get_project_context` | Current work + stand-up line + recent discoveries/decisions |
-| `get_current_work` | Current-work note only |
-| `save_discovery` | Reusable finding (deduped) |
-| `save_decision` | Reusable choice (deduped) |
-| `update_current_work` | Replace current work after real progress |
-| `search_memory` | SQLite FTS5 (optional OpenAI re-rank) |
-| `get_standup` | Global stand-up |
-| `update_standup` | Set sentences, or `generate: true` from current work |
+| `get_current_work`    | Current-work note only                                      |
+| `save_discovery`      | Reusable finding (deduped)                                  |
+| `save_decision`       | Reusable choice (deduped)                                   |
+| `update_current_work` | Replace current work after real progress                    |
+| `search_memory`       | SQLite FTS5 (optional OpenAI re-rank)                       |
+| `get_standup`         | Global stand-up                                             |
+| `update_standup`      | Set sentences, or `generate: true` from current work        |
 
 Inputs are Zod-validated. Duplicate memories return the existing row instead of inserting. Operations are logged to stderr and `operation_logs` (redacted).
 

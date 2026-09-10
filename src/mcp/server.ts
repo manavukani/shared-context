@@ -16,7 +16,11 @@ Behavior:
 - Scope repository context to the correct projectId. If cwd is registered via repo path, you may omit projectId.`;
 
 const projectRef = {
-  projectId: z.string().regex(/^[a-z0-9][a-z0-9-]{0,63}$/).optional().describe("Project slug, e.g. issuer-ui"),
+  projectId: z
+    .string()
+    .regex(/^[a-z0-9][a-z0-9-]{0,63}$/)
+    .optional()
+    .describe("Project slug, e.g. issuer-ui"),
   cwd: z.string().optional().describe("Working directory used to match a registered repo path"),
 };
 
@@ -44,7 +48,10 @@ export class SharedContextServer {
         title: "Add project",
         description: "Register or update a project so cwd/repo matching and other tools can resolve it.",
         inputSchema: z.object({
-          projectId: z.string().regex(/^[a-z0-9][a-z0-9-]{0,63}$/).describe("Project slug, e.g. issuer-ui"),
+          projectId: z
+            .string()
+            .regex(/^[a-z0-9][a-z0-9-]{0,63}$/)
+            .describe("Project slug, e.g. issuer-ui"),
           name: z.string().min(1).max(200).optional(),
           repoPath: z.string().optional().describe("Local repo path used to auto-scope tools from cwd"),
         }),
@@ -129,7 +136,8 @@ export class SharedContextServer {
       "update_current_work",
       {
         title: "Update current work",
-        description: "Replace the current-work note after meaningful progress. Does not delete discoveries or decisions.",
+        description:
+          "Replace the current-work note after meaningful progress. Does not delete discoveries or decisions.",
         inputSchema: z.object({
           ...projectRef,
           body: z.string().min(1).max(8000),
@@ -139,10 +147,7 @@ export class SharedContextServer {
       async (input) =>
         SharedContextServer.guard(async () => {
           const result = await MemoryService.updateCurrentWork(session, input);
-          return ResultFormat.currentWork(
-            MemoryService.getCurrentWork(session, result.projectId).project,
-            result.body,
-          );
+          return ResultFormat.currentWork(MemoryService.getCurrentWork(session, result.projectId).project, result.body);
         }),
     );
 
@@ -150,7 +155,8 @@ export class SharedContextServer {
       "search_memory",
       {
         title: "Search memory",
-        description: "Full-text search across discoveries, decisions, and current work. Optional semantic re-rank if OpenAI is configured.",
+        description:
+          "Full-text search across discoveries, decisions, and current work. Optional semantic re-rank if OpenAI is configured.",
         inputSchema: z.object({
           query: z.string().min(1).max(200),
           projectId: projectRef.projectId,
@@ -172,8 +178,7 @@ export class SharedContextServer {
         description: "Read the global stand-up (one sentence per work item, across all repos).",
         inputSchema: z.object({}),
       },
-      async () =>
-        SharedContextServer.guard(() => ResultFormat.standup(MemoryService.getStandup(session))),
+      async () => SharedContextServer.guard(() => ResultFormat.standup(MemoryService.getStandup(session))),
     );
 
     server.registerTool(

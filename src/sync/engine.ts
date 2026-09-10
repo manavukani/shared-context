@@ -31,9 +31,11 @@ export class SyncEngine {
         }
       }
     }
-    if (await SyncEngine.maybeImport(session, "standup.md", session.paths.standupFile, (md) => {
-      SyncEngine.applyStandupMarkdown(session, md);
-    })) {
+    if (
+      await SyncEngine.maybeImport(session, "standup.md", session.paths.standupFile, (md) => {
+        SyncEngine.applyStandupMarkdown(session, md);
+      })
+    ) {
       imported.push("standup.md");
     }
     await SyncEngine.exportAll(session);
@@ -44,7 +46,12 @@ export class SyncEngine {
   static async exportCurrentWork(session: ContextSession, projectId: string): Promise<void> {
     const row = session.db.select().from(currentWork).where(eq(currentWork.projectId, projectId)).get();
     const markdown = MarkdownCodec.currentWork(row?.body ?? "");
-    SyncEngine.writeTracked(session, `projects/${projectId}/current-work.md`, session.paths.currentWorkFile(projectId), markdown);
+    SyncEngine.writeTracked(
+      session,
+      `projects/${projectId}/current-work.md`,
+      session.paths.currentWorkFile(projectId),
+      markdown,
+    );
   }
 
   static async exportMemories(session: ContextSession, projectId: string, kind: MemoryKind): Promise<void> {
@@ -66,12 +73,17 @@ export class SyncEngine {
       })),
     );
     const rel = `projects/${projectId}/${kind === "discovery" ? "discoveries" : "decisions"}.md`;
-    const abs = kind === "discovery" ? session.paths.discoveriesFile(projectId) : session.paths.decisionsFile(projectId);
+    const abs =
+      kind === "discovery" ? session.paths.discoveriesFile(projectId) : session.paths.decisionsFile(projectId);
     SyncEngine.writeTracked(session, rel, abs, markdown);
   }
 
   static async exportStandup(session: ContextSession): Promise<void> {
-    const items = session.db.select().from(standupItems).all().sort((a, b) => a.projectId.localeCompare(b.projectId));
+    const items = session.db
+      .select()
+      .from(standupItems)
+      .all()
+      .sort((a, b) => a.projectId.localeCompare(b.projectId));
     const markdown = MarkdownCodec.standup(items);
     SyncEngine.writeTracked(session, "standup.md", session.paths.standupFile, markdown);
   }
@@ -124,9 +136,7 @@ export class SyncEngine {
       const existing = session.db.select().from(memories).where(eq(memories.id, section.id)).get();
       const hash = ContentHash.of(kind, title, body);
       const hashOwner = session.sqlite
-        .prepare(
-          "SELECT id FROM memories WHERE project_id = ? AND kind = ? AND content_hash = ? LIMIT 1",
-        )
+        .prepare("SELECT id FROM memories WHERE project_id = ? AND kind = ? AND content_hash = ? LIMIT 1")
         .get(projectId, kind, hash) as { id: string } | undefined;
       if (hashOwner && hashOwner.id !== section.id) {
         continue;

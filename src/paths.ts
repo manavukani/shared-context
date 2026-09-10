@@ -9,10 +9,7 @@ export class ContextPaths {
   }
 
   static resolve(homeOverride?: string): ContextPaths {
-    const home =
-      homeOverride ??
-      process.env.AI_CONTEXT_HOME ??
-      join(homedir(), ".ai-context");
+    const home = homeOverride ?? process.env.AI_CONTEXT_HOME ?? join(homedir(), ".ai-context");
     return new ContextPaths(home);
   }
 

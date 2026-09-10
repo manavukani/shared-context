@@ -24,7 +24,12 @@ export class ResultFormat {
       "## Decisions",
       ...ResultFormat.memoryBullets(input.decisions),
     ];
-    return lines.filter((line) => line !== null).join("\n").trim() + "\n";
+    return (
+      lines
+        .filter((line) => line !== null)
+        .join("\n")
+        .trim() + "\n"
+    );
   }
 
   static currentWork(project: ProjectRow, body: string): string {
@@ -48,7 +53,10 @@ export class ResultFormat {
     if (rows.length === 0) {
       return "No matches.\n";
     }
-    return rows.map((row) => `- [${row.kind}] ${row.projectId} / ${row.title}\n  ${row.excerpt} (${row.id})`).join("\n") + "\n";
+    return (
+      rows.map((row) => `- [${row.kind}] ${row.projectId} / ${row.title}\n  ${row.excerpt} (${row.id})`).join("\n") +
+      "\n"
+    );
   }
 
   static standup(items: StandupItemRow[]): string {

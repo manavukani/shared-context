@@ -117,10 +117,7 @@ export class OpenAiLayer {
   }
 
   async oneSentence(text: string): Promise<string | null> {
-    return this.summarize(
-      text,
-      "Rewrite as a single stand-up sentence (max 20 words). No preamble. Present tense.",
-    );
+    return this.summarize(text, "Rewrite as a single stand-up sentence (max 20 words). No preamble. Present tense.");
   }
 
   async probe(): Promise<boolean> {

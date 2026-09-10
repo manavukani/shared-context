@@ -9,7 +9,10 @@ export function expect(actual: unknown) {
       assert.deepEqual(actual, expected);
     },
     toContain(expected: string) {
-      assert.ok(String(actual).includes(expected), `expected ${JSON.stringify(actual)} to contain ${JSON.stringify(expected)}`);
+      assert.ok(
+        String(actual).includes(expected),
+        `expected ${JSON.stringify(actual)} to contain ${JSON.stringify(expected)}`,
+      );
     },
     toHaveLength(n: number) {
       assert.equal((actual as { length: number }).length, n);
@@ -28,7 +31,10 @@ export function expect(actual: unknown) {
     },
     not: {
       toContain(expected: string) {
-        assert.ok(!String(actual).includes(expected), `expected ${JSON.stringify(actual)} not to contain ${JSON.stringify(expected)}`);
+        assert.ok(
+          !String(actual).includes(expected),
+          `expected ${JSON.stringify(actual)} not to contain ${JSON.stringify(expected)}`,
+        );
       },
       toBe(expected: unknown) {
         assert.notEqual(actual, expected);

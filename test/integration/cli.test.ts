@@ -102,7 +102,10 @@ describe("CLI", () => {
       "Another Resolved note.",
     ]);
     const limited = run(home, ["memory", "search", "Resolved", "--limit", "1"]);
-    const hits = limited.trim().split("\n").filter((line) => line.startsWith("- "));
+    const hits = limited
+      .trim()
+      .split("\n")
+      .filter((line) => line.startsWith("- "));
     expect(hits).toHaveLength(1);
   });
 

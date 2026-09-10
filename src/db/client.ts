@@ -41,8 +41,7 @@ export class DatabaseClient {
 
   private ftsSql(name: string): string | undefined {
     const row = this.sqlite.prepare("SELECT sql FROM sqlite_master WHERE name = ?").get(name) as
-      | { sql: string }
-      | undefined;
+      { sql: string } | undefined;
     return row?.sql;
   }
 

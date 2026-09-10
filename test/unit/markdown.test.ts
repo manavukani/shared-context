@@ -62,9 +62,7 @@ describe("MarkdownCodec", () => {
 
   it("round-trips standup items", () => {
     const md = MarkdownCodec.standup([{ projectId: "issuer-ui", sentence: "Shipping OAuth refresh." }]);
-    expect(MarkdownCodec.parseStandup(md)).toEqual([
-      { projectId: "issuer-ui", sentence: "Shipping OAuth refresh." },
-    ]);
+    expect(MarkdownCodec.parseStandup(md)).toEqual([{ projectId: "issuer-ui", sentence: "Shipping OAuth refresh." }]);
   });
 
   it("parses current work without the heading", () => {

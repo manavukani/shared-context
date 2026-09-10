@@ -31,15 +31,15 @@ db/context.sqlite
 
 ## SQLite schema (source of truth)
 
-| Table | Role |
-|---|---|
-| `projects` | id (slug), name, optional repo_path |
-| `memories` | discoveries and decisions; unique `(project_id, kind, content_hash)` |
-| `current_work` | one row per project |
-| `standup_items` | one sentence per project; **global** across repos |
-| `operation_logs` | tool/CLI operations (redacted) |
-| `sync_meta` | last file hash + last DB export hash per markdown path |
-| `memory_fts` | FTS5 virtual table (INSERT/UPDATE/DELETE triggers keep it in sync) |
+| Table            | Role                                                                 |
+| ---------------- | -------------------------------------------------------------------- |
+| `projects`       | id (slug), name, optional repo_path                                  |
+| `memories`       | discoveries and decisions; unique `(project_id, kind, content_hash)` |
+| `current_work`   | one row per project                                                  |
+| `standup_items`  | one sentence per project; **global** across repos                    |
+| `operation_logs` | tool/CLI operations (redacted)                                       |
+| `sync_meta`      | last file hash + last DB export hash per markdown path               |
+| `memory_fts`     | FTS5 virtual table (INSERT/UPDATE/DELETE triggers keep it in sync)   |
 
 `memories.embedding` is an optional JSON float array written only when OpenAI is on. That is a column, not a vector database.
 
@@ -55,12 +55,12 @@ Discovery/decision sections include a stable `id` so round-trips do not duplicat
 
 Enabled only when `config.ai.enabled` is true **and** `OPENAI_API_KEY` is set.
 
-| Feature | Without key | With key |
-|---|---|---|
-| CRUD, stand-up, markdown sync | yes | yes |
-| Duplicate check | content hash | hash, then cosine similarity on embeddings |
-| Search | SQLite FTS5 | FTS, then optional embedding re-rank |
-| Summarize / classify | skipped | used for stand-up generation and optional kind classification |
+| Feature                       | Without key  | With key                                                      |
+| ----------------------------- | ------------ | ------------------------------------------------------------- |
+| CRUD, stand-up, markdown sync | yes          | yes                                                           |
+| Duplicate check               | content hash | hash, then cosine similarity on embeddings                    |
+| Search                        | SQLite FTS5  | FTS, then optional embedding re-rank                          |
+| Summarize / classify          | skipped      | used for stand-up generation and optional kind classification |
 
 Missing key is not an error; `context doctor` reports `ai: degraded`.
 
