@@ -138,6 +138,11 @@ describe("MemoryService", () => {
     OpenAiLayer.lastError = null;
   });
 
+  it("does not sink un-embedded FTS hits when re-ranking", () => {
+    expect(MemoryService.blendedScore(0, null)).toBeGreaterThan(MemoryService.blendedScore(5, 0));
+    expect(MemoryService.blendedScore(0, null)).toBeGreaterThan(MemoryService.blendedScore(0, 0));
+  });
+
   it("embeds a memory only once when AI is enabled", async () => {
     ({ session } = openSession());
     MemoryService.addProject(session, { id: "issuer-ui" });

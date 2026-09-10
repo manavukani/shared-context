@@ -369,13 +369,13 @@ export class MemoryService {
       const qEmbed = await ai.embed(query);
       if (qEmbed) {
         rows = rows
-          .map((row) => {
+          .map((row, index) => {
             const mem = row.memory_id.startsWith("current:")
               ? null
               : session.db.select().from(memories).where(eq(memories.id, row.memory_id)).get();
             const emb = OpenAiLayer.parseEmbedding(mem?.embedding ?? null);
-            const score = emb ? OpenAiLayer.cosine(qEmbed, emb) : 0;
-            return { ...row, score };
+            const cosine = emb ? OpenAiLayer.cosine(qEmbed, emb) : null;
+            return { ...row, score: MemoryService.blendedScore(index, cosine) };
           })
           .sort((a, b) => b.score - a.score);
       }
@@ -514,6 +514,14 @@ export class MemoryService {
     const cleaned = text.replace(/\s+/g, " ").trim();
     const sentence = cleaned.split(/(?<=[.!?])\s+/)[0] ?? cleaned;
     return sentence.length > 140 ? `${sentence.slice(0, 137).trimEnd()}...` : sentence;
+  }
+
+  static blendedScore(ftsIndex: number, cosine: number | null): number {
+    const fts = 1 / (1 + Math.max(0, ftsIndex));
+    if (cosine == null) {
+      return fts;
+    }
+    return 0.4 * fts + 0.6 * cosine;
   }
 
   static excerpt(body: string, query: string, radius = 80): string {
