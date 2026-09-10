@@ -143,6 +143,10 @@ describe("MemoryService", () => {
     expect(MemoryService.blendedScore(0, null)).toBeGreaterThan(MemoryService.blendedScore(0, 0));
   });
 
+  it("bounds semantic duplicate scans to recent embedded rows", () => {
+    expect(MemoryService.SEMANTIC_SCAN_LIMIT).toBe(200);
+  });
+
   it("embeds a memory only once when AI is enabled", async () => {
     ({ session } = openSession());
     MemoryService.addProject(session, { id: "issuer-ui" });

@@ -1,4 +1,4 @@
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, isNotNull } from "drizzle-orm";
 import { resolve } from "node:path";
 import { rmSync } from "node:fs";
 import { OpenAiLayer } from "../ai/openai.js";
@@ -31,6 +31,8 @@ export type SearchInput = {
 };
 
 export class MemoryService {
+  /** Cap semantic duplicate scans so saves stay cheap as a project grows. */
+  static readonly SEMANTIC_SCAN_LIMIT = 200;
   static async initHome(session: ContextSession): Promise<void> {
     const { AppConfig } = await import("../config.js");
     AppConfig.write(session.paths.configFile, session.config.data);
@@ -572,7 +574,9 @@ export class MemoryService {
     const candidates = session.db
       .select()
       .from(memories)
-      .where(and(eq(memories.projectId, projectId), eq(memories.kind, kind)))
+      .where(and(eq(memories.projectId, projectId), eq(memories.kind, kind), isNotNull(memories.embedding)))
+      .orderBy(desc(memories.createdAt))
+      .limit(MemoryService.SEMANTIC_SCAN_LIMIT)
       .all();
     let best: (typeof candidates)[number] | null = null;
     let bestScore = 0;
