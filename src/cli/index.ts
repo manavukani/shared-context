@@ -44,7 +44,7 @@ program
       await withSession(home, async (session) => {
         AppConfig.write(session.paths.configFile);
         await MemoryService.initHome(session);
-        const health = MemoryService.doctor(session);
+        const health = await MemoryService.doctor(session);
         process.stdout.write(`Initialized ${session.paths.home}\n`);
         process.stdout.write(`SQLite ${session.paths.sqlitePath}\n`);
         process.stdout.write(`doctor: ${health.healthy ? "healthy" : "unhealthy"}\n`);
@@ -322,8 +322,8 @@ program
   .description("Check that local context storage is healthy")
   .action(async () => {
     try {
-      await withSession(program.opts<{ home?: string }>().home, (session) => {
-        const health = MemoryService.doctor(session);
+      await withSession(program.opts<{ home?: string }>().home, async (session) => {
+        const health = await MemoryService.doctor(session);
         process.stdout.write(`${JSON.stringify(health, null, 2)}\n`);
         if (!health.healthy) {
           process.exitCode = 1;

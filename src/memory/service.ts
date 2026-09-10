@@ -462,7 +462,7 @@ export class MemoryService {
     return items;
   }
 
-  static doctor(session: ContextSession) {
+  static async doctor(session: ContextSession) {
     const ai = new OpenAiLayer(session.config);
     const tables = session.sqlite
       .prepare("SELECT name FROM sqlite_master WHERE type IN ('table', 'view') ORDER BY name")
@@ -473,6 +473,13 @@ export class MemoryService {
     const fts = session.sqlite
       .prepare("SELECT name FROM sqlite_master WHERE name = 'memory_fts'")
       .get() as { name: string } | undefined;
+    let aiStatus: OpenAiLayer["status"] | "error" = ai.status;
+    if (ai.status === "ready") {
+      const ok = await ai.probe();
+      if (!ok) {
+        aiStatus = "error";
+      }
+    }
     const healthy = missing.length === 0 && Boolean(fts);
     return {
       healthy,
@@ -483,7 +490,8 @@ export class MemoryService {
       memories: session.db.select().from(memories).all().length,
       missingTables: missing,
       fts: Boolean(fts),
-      ai: ai.status,
+      ai: aiStatus,
+      aiError: OpenAiLayer.lastError,
     };
   }
 

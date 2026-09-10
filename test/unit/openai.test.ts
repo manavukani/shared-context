@@ -21,4 +21,15 @@ describe("OpenAiLayer", () => {
     expect(OpenAiLayer.cosine([1, 0], [1, 0])).toBeCloseTo(1);
     expect(OpenAiLayer.cosine([1, 0], [0, 1])).toBeCloseTo(0);
   });
+
+  it("records AI failures so doctor can surface them", async () => {
+    OpenAiLayer.lastError = null;
+    const fetchFn = (async () => {
+      throw new Error("gateway down");
+    }) as typeof fetch;
+    const ai = new OpenAiLayer(new AppConfig("/tmp/config.json", AppConfig.defaults()), "sk-test", fetchFn);
+    expect(await ai.embed("hello")).toBe(null);
+    expect(OpenAiLayer.lastError).toContain("gateway down");
+    expect(await ai.probe()).toBe(false);
+  });
 });

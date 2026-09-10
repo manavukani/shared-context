@@ -1,4 +1,5 @@
 import { afterEach, describe, it } from "node:test";
+import { OpenAiLayer } from "../../src/ai/openai.js";
 import { MemoryService } from "../../src/memory/service.js";
 import { ResultFormat } from "../../src/memory/format.js";
 import type { ContextSession } from "../../src/session.js";
@@ -125,5 +126,15 @@ describe("MemoryService", () => {
     expect(MemoryService.getCurrentWork(session, "issuer-ui").currentWork).toBe("");
     await MemoryService.removeProject(session, "issuer-ui");
     expect(MemoryService.listProjects(session)).toHaveLength(0);
+  });
+
+  it("includes AI errors on doctor output", async () => {
+    ({ session } = openSession());
+    OpenAiLayer.lastError = "[shared-context] openai /chat/completions HTTP 401";
+    const health = await MemoryService.doctor(session);
+    expect(health.healthy).toBe(true);
+    expect(health.ai).toBe("degraded");
+    expect(health.aiError).toContain("HTTP 401");
+    OpenAiLayer.lastError = null;
   });
 });

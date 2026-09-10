@@ -11,15 +11,19 @@ type EmbeddingResponse = {
 };
 
 export class OpenAiLayer {
+  static lastError: string | null = null;
+
   private readonly apiKey: string | undefined;
+  private readonly fetchFn: typeof fetch;
   readonly status: AiStatus;
   readonly model: string;
   readonly embeddingModel: string;
 
-  constructor(config: AppConfig, apiKey = process.env.OPENAI_API_KEY) {
+  constructor(config: AppConfig, apiKey = process.env.OPENAI_API_KEY, fetchFn?: typeof fetch) {
     this.model = config.data.ai.model;
     this.embeddingModel = config.data.ai.embeddingModel;
     this.apiKey = apiKey || undefined;
+    this.fetchFn = fetchFn ?? globalThis.fetch.bind(globalThis);
     if (!config.aiEnabled) {
       this.status = "off";
       return;
@@ -111,26 +115,42 @@ export class OpenAiLayer {
     );
   }
 
-  private async post<T>(path: string, body: unknown): Promise<T | null> {
-    if (!this.enabled || !this.apiKey) {
+  async probe(): Promise<boolean> {
+    if (this.status === "off") {
+      return true;
+    }
+    if (!this.apiKey) {
+      return false;
+    }
+    const json = await this.post<{ data?: unknown }>("/models", undefined, "GET");
+    return json != null;
+  }
+
+  private async post<T>(path: string, body: unknown, method = "POST"): Promise<T | null> {
+    if (!this.apiKey || this.status === "off") {
       return null;
     }
     try {
-      const response = await fetch(`https://api.openai.com/v1${path}`, {
-        method: "POST",
+      const response = await this.fetchFn(`https://api.openai.com/v1${path}`, {
+        method,
         headers: {
           authorization: `Bearer ${this.apiKey}`,
           "content-type": "application/json",
         },
-        body: JSON.stringify(body),
+        body: method === "GET" ? undefined : JSON.stringify(body),
       });
       if (!response.ok) {
-        process.stderr.write(`[shared-context] openai ${path} HTTP ${response.status}\n`);
+        const detail = `[shared-context] openai ${path} HTTP ${response.status}`;
+        OpenAiLayer.lastError = detail;
+        process.stderr.write(`${detail}\n`);
         return null;
       }
+      OpenAiLayer.lastError = null;
       return (await response.json()) as T;
     } catch (error) {
-      process.stderr.write(`[shared-context] openai ${path} failed: ${String(error)}\n`);
+      const detail = `[shared-context] openai ${path} failed: ${String(error)}`;
+      OpenAiLayer.lastError = detail;
+      process.stderr.write(`${detail}\n`);
       return null;
     }
   }
