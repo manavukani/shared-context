@@ -330,20 +330,38 @@ export class MemoryService {
     }
     const limit = Math.min(Math.max(input.limit ?? 8, 1), 25);
     const ftsQuery = MemoryService.escapeFts(query);
-    let sql = `SELECT memory_id, kind, title, body, project_id, rank
-      FROM memory_fts
-      WHERE memory_fts MATCH ?
-    `;
-    const params: unknown[] = [ftsQuery];
-    if (input.projectId) {
-      sql += " AND project_id = ?";
-      params.push(MemoryService.requireProjectId(input.projectId));
+    const projectId = input.projectId ? MemoryService.requireProjectId(input.projectId) : undefined;
+    const matchMemories = input.kind !== "current_work";
+    const matchWork = !input.kind || input.kind === "current_work";
+    const parts: string[] = [];
+    const params: unknown[] = [];
+    if (matchMemories) {
+      let sql = `SELECT m.id AS memory_id, m.kind AS kind, m.title AS title, m.body AS body, m.project_id AS project_id, memory_fts.rank AS rank
+        FROM memory_fts JOIN memories m ON m.rowid = memory_fts.rowid
+        WHERE memory_fts MATCH ?`;
+      params.push(ftsQuery);
+      if (projectId) {
+        sql += " AND m.project_id = ?";
+        params.push(projectId);
+      }
+      if (input.kind) {
+        sql += " AND m.kind = ?";
+        params.push(input.kind);
+      }
+      parts.push(sql);
     }
-    if (input.kind) {
-      sql += " AND kind = ?";
-      params.push(input.kind);
+    if (matchWork) {
+      let sql = `SELECT 'current:' || cw.project_id AS memory_id, 'current_work' AS kind, 'Current work' AS title, cw.body AS body, cw.project_id AS project_id, work_fts.rank AS rank
+        FROM work_fts JOIN current_work cw ON cw.rowid = work_fts.rowid
+        WHERE work_fts MATCH ?`;
+      params.push(ftsQuery);
+      if (projectId) {
+        sql += " AND cw.project_id = ?";
+        params.push(projectId);
+      }
+      parts.push(sql);
     }
-    sql += " ORDER BY rank LIMIT ?";
+    const sql = `${parts.join(" UNION ALL ")} ORDER BY rank LIMIT ?`;
     params.push(limit);
     let rows = session.sqlite.prepare(sql).all(...params) as {
       memory_id: string;
@@ -461,8 +479,9 @@ export class MemoryService {
     const required = ["projects", "memories", "current_work", "standup_items", "operation_logs", "sync_meta"];
     const missing = required.filter((name) => !names.has(name));
     const fts = session.sqlite
-      .prepare("SELECT name FROM sqlite_master WHERE name = 'memory_fts'")
-      .get() as { name: string } | undefined;
+      .prepare("SELECT name FROM sqlite_master WHERE name IN ('memory_fts', 'work_fts')")
+      .all() as { name: string }[];
+    const ftsReady = fts.length === 2;
     let aiStatus: OpenAiLayer["status"] | "error" = ai.status;
     if (ai.status === "ready") {
       const ok = await ai.probe();
@@ -470,7 +489,7 @@ export class MemoryService {
         aiStatus = "error";
       }
     }
-    const healthy = missing.length === 0 && Boolean(fts) && !session.config.error;
+    const healthy = missing.length === 0 && ftsReady && !session.config.error;
     return {
       healthy,
       home: session.paths.home,
@@ -480,7 +499,7 @@ export class MemoryService {
       projects: MemoryService.listProjects(session).length,
       memories: session.db.select().from(memories).all().length,
       missingTables: missing,
-      fts: Boolean(fts),
+      fts: ftsReady,
       ai: aiStatus,
       aiError: OpenAiLayer.lastError,
     };

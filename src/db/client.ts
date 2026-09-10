@@ -39,50 +39,77 @@ export class DatabaseClient {
     return DatabaseClient.migrate(sqlitePath);
   }
 
-  ensureFts(): void {
-    const existing = this.sqlite.prepare("SELECT sql FROM sqlite_master WHERE name = 'memory_fts'").get() as
+  private ftsSql(name: string): string | undefined {
+    const row = this.sqlite.prepare("SELECT sql FROM sqlite_master WHERE name = ?").get(name) as
       | { sql: string }
       | undefined;
-    if (existing?.sql && !/kind\s+UNINDEXED/i.test(existing.sql)) {
+    return row?.sql;
+  }
+
+  private usesExternalContent(): boolean {
+    const memory = this.ftsSql("memory_fts") ?? "";
+    const work = this.ftsSql("work_fts") ?? "";
+    return /content=['"]memories['"]/i.test(memory) && /content=['"]current_work['"]/i.test(work);
+  }
+
+  private dropFtsTriggers(): void {
+    this.sqlite.exec(`
+      DROP TRIGGER IF EXISTS memories_ai;
+      DROP TRIGGER IF EXISTS memories_ad;
+      DROP TRIGGER IF EXISTS memories_au;
+      DROP TRIGGER IF EXISTS current_work_ai;
+      DROP TRIGGER IF EXISTS current_work_ad;
+      DROP TRIGGER IF EXISTS current_work_au;
+    `);
+  }
+
+  ensureFts(): void {
+    if (!this.usesExternalContent()) {
+      this.dropFtsTriggers();
       this.sqlite.exec("DROP TABLE IF EXISTS memory_fts");
+      this.sqlite.exec("DROP TABLE IF EXISTS work_fts");
     }
     this.sqlite.exec(`
       CREATE VIRTUAL TABLE IF NOT EXISTS memory_fts USING fts5(
-        memory_id UNINDEXED,
-        project_id UNINDEXED,
-        kind UNINDEXED,
         title,
         body,
+        content='memories',
+        content_rowid='rowid',
+        tokenize = 'porter unicode61'
+      );
+    `);
+    this.sqlite.exec(`
+      CREATE VIRTUAL TABLE IF NOT EXISTS work_fts USING fts5(
+        body,
+        content='current_work',
+        content_rowid='rowid',
         tokenize = 'porter unicode61'
       );
     `);
   }
 
   ensureFtsTriggers(): void {
+    this.dropFtsTriggers();
     this.sqlite.exec(`
-      CREATE TRIGGER IF NOT EXISTS memories_ai AFTER INSERT ON memories BEGIN
-        INSERT INTO memory_fts(memory_id, project_id, kind, title, body)
-        VALUES (new.id, new.project_id, new.kind, new.title, new.body);
+      CREATE TRIGGER memories_ai AFTER INSERT ON memories BEGIN
+        INSERT INTO memory_fts(rowid, title, body) VALUES (new.rowid, new.title, new.body);
       END;
-      CREATE TRIGGER IF NOT EXISTS memories_ad AFTER DELETE ON memories BEGIN
-        DELETE FROM memory_fts WHERE memory_id = old.id;
+      CREATE TRIGGER memories_ad AFTER DELETE ON memories BEGIN
+        INSERT INTO memory_fts(memory_fts, rowid, title, body) VALUES('delete', old.rowid, old.title, old.body);
       END;
-      CREATE TRIGGER IF NOT EXISTS memories_au AFTER UPDATE ON memories BEGIN
-        DELETE FROM memory_fts WHERE memory_id = old.id;
-        INSERT INTO memory_fts(memory_id, project_id, kind, title, body)
-        VALUES (new.id, new.project_id, new.kind, new.title, new.body);
+      CREATE TRIGGER memories_au AFTER UPDATE ON memories BEGIN
+        INSERT INTO memory_fts(memory_fts, rowid, title, body) VALUES('delete', old.rowid, old.title, old.body);
+        INSERT INTO memory_fts(rowid, title, body) VALUES (new.rowid, new.title, new.body);
       END;
-      CREATE TRIGGER IF NOT EXISTS current_work_ai AFTER INSERT ON current_work BEGIN
-        INSERT INTO memory_fts(memory_id, project_id, kind, title, body)
-        VALUES ('current:' || new.project_id, new.project_id, 'current_work', 'Current work', new.body);
+      CREATE TRIGGER current_work_ai AFTER INSERT ON current_work BEGIN
+        INSERT INTO work_fts(rowid, body) VALUES (new.rowid, new.body);
       END;
-      CREATE TRIGGER IF NOT EXISTS current_work_ad AFTER DELETE ON current_work BEGIN
-        DELETE FROM memory_fts WHERE memory_id = 'current:' || old.project_id;
+      CREATE TRIGGER current_work_ad AFTER DELETE ON current_work BEGIN
+        INSERT INTO work_fts(work_fts, rowid, body) VALUES('delete', old.rowid, old.body);
       END;
-      CREATE TRIGGER IF NOT EXISTS current_work_au AFTER UPDATE ON current_work BEGIN
-        DELETE FROM memory_fts WHERE memory_id = 'current:' || old.project_id;
-        INSERT INTO memory_fts(memory_id, project_id, kind, title, body)
-        VALUES ('current:' || new.project_id, new.project_id, 'current_work', 'Current work', new.body);
+      CREATE TRIGGER current_work_au AFTER UPDATE ON current_work BEGIN
+        INSERT INTO work_fts(work_fts, rowid, body) VALUES('delete', old.rowid, old.body);
+        INSERT INTO work_fts(rowid, body) VALUES (new.rowid, new.body);
       END;
     `);
   }
@@ -92,16 +119,13 @@ export class DatabaseClient {
     if (!ready) {
       return;
     }
-    const fts = this.sqlite.prepare("SELECT count(*) AS c FROM memory_fts").get() as { c: number };
-    if (fts.c > 0) {
-      return;
-    }
+    const memFts = this.sqlite.prepare("SELECT count(*) AS c FROM memory_fts").get() as { c: number };
+    const workFts = this.sqlite.prepare("SELECT count(*) AS c FROM work_fts").get() as { c: number };
     const mems = this.sqlite.prepare("SELECT count(*) AS c FROM memories").get() as { c: number };
     const works = this.sqlite.prepare("SELECT count(*) AS c FROM current_work").get() as { c: number };
-    if (mems.c + works.c === 0) {
-      return;
+    if ((mems.c > 0 && memFts.c === 0) || (works.c > 0 && workFts.c === 0)) {
+      this.rebuildFts();
     }
-    this.rebuildFts();
   }
 
   rebuildFts(): void {
@@ -109,27 +133,8 @@ export class DatabaseClient {
     if (!ready) {
       return;
     }
-    this.sqlite.exec("DELETE FROM memory_fts");
-    const insert = this.sqlite.prepare(
-      "INSERT INTO memory_fts (memory_id, project_id, kind, title, body) VALUES (?, ?, ?, ?, ?)",
-    );
-    const mems = this.sqlite.prepare("SELECT id, project_id, kind, title, body FROM memories").all() as {
-      id: string;
-      project_id: string;
-      kind: string;
-      title: string;
-      body: string;
-    }[];
-    for (const row of mems) {
-      insert.run(row.id, row.project_id, row.kind, row.title, row.body);
-    }
-    const works = this.sqlite.prepare("SELECT project_id, body FROM current_work").all() as {
-      project_id: string;
-      body: string;
-    }[];
-    for (const row of works) {
-      insert.run(`current:${row.project_id}`, row.project_id, "current_work", "Current work", row.body);
-    }
+    this.sqlite.exec("INSERT INTO memory_fts(memory_fts) VALUES('rebuild')");
+    this.sqlite.exec("INSERT INTO work_fts(work_fts) VALUES('rebuild')");
   }
 
   close(): void {

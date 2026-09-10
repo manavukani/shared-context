@@ -134,6 +134,31 @@ describe("MemoryService", () => {
     expect(hits.some((hit) => hit.title === "OAuth callback")).toBe(false);
   });
 
+  it("stores FTS content externally", async () => {
+    ({ session } = openSession());
+    MemoryService.addProject(session, { id: "issuer-ui" });
+    await MemoryService.saveDiscovery(session, {
+      projectId: "issuer-ui",
+      title: "External FTS",
+      body: "Content lives on the memories table.",
+      source: "cli",
+    });
+    await MemoryService.updateCurrentWork(session, {
+      projectId: "issuer-ui",
+      body: "Searchable current work note.",
+    });
+    const sql = session.sqlite.prepare("SELECT sql FROM sqlite_master WHERE name = 'memory_fts'").get() as {
+      sql: string;
+    };
+    expect(sql.sql).toContain("content='memories'");
+    const shadow = session.sqlite.prepare("SELECT name FROM sqlite_master WHERE name = 'memory_fts_content'").get();
+    expect(Boolean(shadow)).toBe(false);
+    const hits = await MemoryService.search(session, { query: "memories table" });
+    expect(hits.some((hit) => hit.title === "External FTS")).toBe(true);
+    const workHits = await MemoryService.search(session, { query: "Searchable current", kind: "current_work" });
+    expect(workHits.some((hit) => hit.kind === "current_work")).toBe(true);
+  });
+
   it("edits and deletes memories and can remove a project", async () => {
     ({ session } = openSession());
     MemoryService.addProject(session, { id: "issuer-ui" });
@@ -202,13 +227,11 @@ describe("MemoryService", () => {
       .prepare("SELECT name FROM sqlite_master WHERE type = 'trigger' AND name LIKE 'memories_%'")
       .all() as { name: string }[];
     expect(triggers.length).toBeGreaterThan(0);
-    session.sqlite
-      .prepare("INSERT INTO memory_fts (memory_id, project_id, kind, title, body) VALUES ('sentinel', 'issuer-ui', 'discovery', 's', 's')")
-      .run();
+    const before = session.sqlite.prepare("SELECT count(*) AS c FROM memory_fts").get() as { c: number };
     session.close();
     session = ContextSession.open(opened.home);
-    const sentinel = session.sqlite.prepare("SELECT memory_id FROM memory_fts WHERE memory_id = 'sentinel'").get();
-    expect(Boolean(sentinel)).toBe(true);
+    const after = session.sqlite.prepare("SELECT count(*) AS c FROM memory_fts").get() as { c: number };
+    expect(after.c).toBe(before.c);
     const hits = await MemoryService.search(session, { query: "Searchable" });
     expect(hits.some((hit) => hit.title === "Trigger path")).toBe(true);
   });
