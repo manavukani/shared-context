@@ -108,12 +108,12 @@ describe("markdown sync", () => {
       body: "Original work.",
     });
     const file = session.paths.currentWorkFile("issuer-ui");
-    writeFileSync(file, "# Current work\n\nDisk edit that should lose.\n", "utf8");
-    session.sqlite.prepare("UPDATE sync_meta SET db_hash = 'stale-db' WHERE rel_path = ?").run(
-      "projects/issuer-ui/current-work.md",
-    );
+    session.sqlite
+      .prepare("UPDATE current_work SET body = ? WHERE project_id = ?")
+      .run("Newer from DB, concurrent.", "issuer-ui");
+    writeFileSync(file, "# Current work\n\nDISK edit, concurrent.\n", "utf8");
     await SyncEngine.importThenExport(session);
-    expect(readFileSync(file, "utf8")).toContain("Original work.");
-    expect(readFileSync(file, "utf8")).not.toContain("Disk edit that should lose");
+    expect(readFileSync(file, "utf8")).toContain("Newer from DB, concurrent.");
+    expect(readFileSync(file, "utf8")).not.toContain("DISK edit, concurrent.");
   });
 });

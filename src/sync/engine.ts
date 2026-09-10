@@ -203,8 +203,8 @@ export class SyncEngine {
     if (meta && meta.fileHash === fileHash) {
       return false;
     }
-    const dbNow = meta?.dbHash;
-    if (meta && meta.fileHash !== fileHash && dbNow && dbNow !== meta.fileHash) {
+    const dbNow = SyncEngine.hashDbRows(session, relPath);
+    if (meta && meta.fileHash !== fileHash && dbNow !== meta.dbHash) {
       Logger.info(session, "sync.conflict", `${relPath}: DB wins`);
       return false;
     }
@@ -215,15 +215,50 @@ export class SyncEngine {
   private static writeTracked(session: ContextSession, relPath: string, absPath: string, markdown: string): void {
     mkdirSync(dirname(absPath), { recursive: true });
     writeFileSync(absPath, markdown, "utf8");
-    const hash = ContentHash.bytes(markdown);
+    const fileHash = ContentHash.bytes(markdown);
+    const dbHash = SyncEngine.hashDbRows(session, relPath);
     const now = Date.now();
     session.db
       .insert(syncMeta)
-      .values({ relPath, fileHash: hash, dbHash: hash, updatedAt: now })
+      .values({ relPath, fileHash, dbHash, updatedAt: now })
       .onConflictDoUpdate({
         target: syncMeta.relPath,
-        set: { fileHash: hash, dbHash: hash, updatedAt: now },
+        set: { fileHash, dbHash, updatedAt: now },
       })
       .run();
+  }
+
+  private static hashDbRows(session: ContextSession, relPath: string): string {
+    if (relPath === "standup.md") {
+      const items = session.db
+        .select()
+        .from(standupItems)
+        .all()
+        .sort((a, b) => a.projectId.localeCompare(b.projectId))
+        .map((row) => `${row.projectId}\t${row.sentence}`)
+        .join("\n");
+      return ContentHash.bytes(items);
+    }
+    const match = relPath.match(/^projects\/([^/]+)\/(current-work|discoveries|decisions)\.md$/);
+    if (!match) {
+      return ContentHash.bytes("");
+    }
+    const projectId = match[1]!;
+    const name = match[2]!;
+    if (name === "current-work") {
+      const row = session.db.select().from(currentWork).where(eq(currentWork.projectId, projectId)).get();
+      return ContentHash.bytes(row?.body ?? "");
+    }
+    const kind = name === "discoveries" ? "discovery" : "decision";
+    const payload = session.db
+      .select()
+      .from(memories)
+      .where(eq(memories.projectId, projectId))
+      .all()
+      .filter((row) => row.kind === kind)
+      .sort((a, b) => a.id.localeCompare(b.id))
+      .map((row) => `${row.id}\t${row.title}\t${row.body}\t${row.source ?? ""}`)
+      .join("\n");
+    return ContentHash.bytes(payload);
   }
 }
