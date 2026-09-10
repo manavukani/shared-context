@@ -60,6 +60,46 @@ describe("markdown sync", () => {
     expect(rows[0]?.id).toBe(saved.memory.id);
   });
 
+  it("redacts secrets when importing markdown", async () => {
+    ({ session } = openSession());
+    MemoryService.addProject(session, { id: "issuer-ui" });
+    await MemoryService.updateCurrentWork(session, {
+      projectId: "issuer-ui",
+      body: "Safe work note.",
+    });
+    writeFileSync(
+      session.paths.discoveriesFile("issuer-ui"),
+      `# Discoveries\n\n## Token leak\n\n<!-- id: 44444444-4444-4444-8444-444444444444 | source: markdown -->\n\nkey is sk-abcdefghijklmnopqrstuvwxyz123456 do not share\n`,
+      "utf8",
+    );
+    writeFileSync(
+      session.paths.currentWorkFile("issuer-ui"),
+      `# Current work\n\ntoken ghp_abcdefghijklmnopqrstuvwxyz1234567890\n`,
+      "utf8",
+    );
+    writeFileSync(
+      session.paths.standupFile,
+      `# Stand-up\n\n- **issuer-ui**: Rotate sk-abcdefghijklmnopqrstuvwxyz123456 tonight.\n`,
+      "utf8",
+    );
+    await SyncEngine.importThenExport(session);
+    const memory = session.sqlite.prepare("SELECT body FROM memories WHERE id = ?").get(
+      "44444444-4444-4444-8444-444444444444",
+    ) as { body: string };
+    const work = session.sqlite.prepare("SELECT body FROM current_work WHERE project_id = ?").get("issuer-ui") as {
+      body: string;
+    };
+    const standup = session.sqlite.prepare("SELECT sentence FROM standup_items WHERE project_id = ?").get(
+      "issuer-ui",
+    ) as { sentence: string };
+    expect(memory.body).toContain("[REDACTED]");
+    expect(memory.body).not.toContain("sk-abcdefghijklmnopqrstuvwxyz123456");
+    expect(work.body).toContain("[REDACTED]");
+    expect(work.body).not.toContain("ghp_abcdefghijklmnopqrstuvwxyz1234567890");
+    expect(standup.sentence).toContain("[REDACTED]");
+    expect(standup.sentence).not.toContain("sk-abcdefghijklmnopqrstuvwxyz123456");
+  });
+
   it("lets the DB win when both sides changed", async () => {
     ({ session } = openSession());
     MemoryService.addProject(session, { id: "issuer-ui" });

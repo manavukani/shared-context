@@ -4,6 +4,7 @@ import { eq } from "drizzle-orm";
 import { currentWork, memories, projects, standupItems, syncMeta } from "../db/schema.js";
 import { ContentHash } from "../hash.js";
 import { Logger } from "../logging/logger.js";
+import { SecretRedactor } from "../secrets.js";
 import type { ContextSession } from "../session.js";
 import { MarkdownCodec, type MemoryKind } from "./markdown.js";
 
@@ -85,7 +86,7 @@ export class SyncEngine {
         `projects/${projectId}/current-work.md`,
         session.paths.currentWorkFile(projectId),
         (md) => {
-          const body = MarkdownCodec.parseCurrentWork(md);
+          const body = SecretRedactor.redact(MarkdownCodec.parseCurrentWork(md));
           const now = Date.now();
           session.db
             .insert(currentWork)
@@ -119,8 +120,10 @@ export class SyncEngine {
     const sections = MarkdownCodec.parseMemories(markdown);
     const now = Date.now();
     for (const section of sections) {
+      const title = SecretRedactor.redact(section.title);
+      const body = SecretRedactor.redact(section.body);
       const existing = session.db.select().from(memories).where(eq(memories.id, section.id)).get();
-      const hash = ContentHash.of(kind, section.title, section.body);
+      const hash = ContentHash.of(kind, title, body);
       const hashOwner = session.sqlite
         .prepare(
           "SELECT id FROM memories WHERE project_id = ? AND kind = ? AND content_hash = ? LIMIT 1",
@@ -133,8 +136,8 @@ export class SyncEngine {
         session.db
           .update(memories)
           .set({
-            title: section.title,
-            body: section.body,
+            title,
+            body,
             kind,
             projectId,
             contentHash: hash,
@@ -150,8 +153,8 @@ export class SyncEngine {
             id: section.id,
             projectId,
             kind,
-            title: section.title,
-            body: section.body,
+            title,
+            body,
             source: section.source ?? "markdown",
             contentHash: hash,
             embedding: null,
@@ -173,12 +176,13 @@ export class SyncEngine {
       if (!project) {
         continue;
       }
+      const sentence = SecretRedactor.redact(item.sentence);
       session.db
         .insert(standupItems)
-        .values({ projectId: item.projectId, sentence: item.sentence, updatedAt: now })
+        .values({ projectId: item.projectId, sentence, updatedAt: now })
         .onConflictDoUpdate({
           target: standupItems.projectId,
-          set: { sentence: item.sentence, updatedAt: now },
+          set: { sentence, updatedAt: now },
         })
         .run();
     }
