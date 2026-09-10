@@ -25,6 +25,7 @@ program
   .name("context")
   .description("Local-first shared AI context (CLI + MCP)")
   .option("--home <path>", "Override context home (or set AI_CONTEXT_HOME)")
+  .option("--cwd <path>", "Working directory used to auto-detect the project")
   .showHelpAfterError();
 
 program.hook("preAction", (thisCommand) => {
@@ -114,7 +115,8 @@ memory
   .argument("<query...>", "Full-text query")
   .option("--project <id>", "Limit to a project")
   .option("--kind <kind>", "discovery | decision | current_work")
-  .action(async (queryParts: string[], opts: { project?: string; kind?: string }) => {
+  .option("--limit <n>", "Max results (1-25)", (value: string) => Number(value))
+  .action(async (queryParts: string[], opts: { project?: string; kind?: string; limit?: number }) => {
     try {
       await withSession(program.opts<{ home?: string }>().home, async (session) => {
         const kind =
@@ -123,6 +125,7 @@ memory
           query: queryParts.join(" "),
           projectId: opts.project,
           kind,
+          limit: Number.isFinite(opts.limit) ? opts.limit : undefined,
         });
         process.stdout.write(ResultFormat.search(rows));
       });
@@ -134,11 +137,12 @@ memory
 memory
   .command("save")
   .requiredOption("--kind <kind>", "discovery | decision")
-  .requiredOption("--project <id>", "Project slug")
+  .option("--project <id>", "Project slug (optional when cwd matches a registered repo)")
+  .option("--cwd <path>", "Working directory to match a registered repo")
   .requiredOption("--title <title>", "Short title")
   .requiredOption("--body <body>", "Details")
   .option("--source <source>", "claude-code | cursor | augment | cli", "cli")
-  .action(async (opts: { kind: string; project: string; title: string; body: string; source?: string }) => {
+  .action(async (opts: { kind: string; project?: string; cwd?: string; title: string; body: string; source?: string }) => {
     try {
       if (opts.kind !== "discovery" && opts.kind !== "decision") {
         throw new Error("--kind must be discovery or decision");
@@ -148,6 +152,7 @@ memory
         const result = await MemoryService.saveMemory(session, {
           kind,
           projectId: opts.project,
+          cwd: opts.cwd ?? program.opts<{ cwd?: string }>().cwd,
           title: opts.title,
           body: opts.body,
           source: opts.source,
@@ -234,10 +239,11 @@ work
   .command("show")
   .description("Show current work")
   .option("--project <id>", "Project slug")
-  .action(async (opts: { project?: string }) => {
+  .option("--cwd <path>", "Working directory to match a registered repo")
+  .action(async (opts: { project?: string; cwd?: string }) => {
     try {
       await withSession(program.opts<{ home?: string }>().home, (session) => {
-        const ctx = MemoryService.getCurrentWork(session, opts.project);
+        const ctx = MemoryService.getCurrentWork(session, opts.project, opts.cwd ?? program.opts<{ cwd?: string }>().cwd);
         process.stdout.write(ResultFormat.currentWork(ctx.project, ctx.currentWork));
       });
     } catch (error) {
@@ -248,14 +254,16 @@ work
 work
   .command("update")
   .description("Replace current work after meaningful progress")
-  .requiredOption("--project <id>", "Project slug")
+  .option("--project <id>", "Project slug (optional when cwd matches a registered repo)")
+  .option("--cwd <path>", "Working directory to match a registered repo")
   .requiredOption("--body <body>", "Current work notes")
   .option("--source <source>", "claude-code | cursor | augment | cli", "cli")
-  .action(async (opts: { project: string; body: string; source?: string }) => {
+  .action(async (opts: { project?: string; cwd?: string; body: string; source?: string }) => {
     try {
       await withSession(program.opts<{ home?: string }>().home, async (session) => {
         const result = await MemoryService.updateCurrentWork(session, {
           projectId: opts.project,
+          cwd: opts.cwd ?? program.opts<{ cwd?: string }>().cwd,
           body: opts.body,
           source: opts.source,
         });
@@ -273,10 +281,15 @@ work
   .command("clear")
   .description("Clear current work for a project")
   .option("--project <id>", "Project slug")
-  .action(async (opts: { project?: string }) => {
+  .option("--cwd <path>", "Working directory to match a registered repo")
+  .action(async (opts: { project?: string; cwd?: string }) => {
     try {
       await withSession(program.opts<{ home?: string }>().home, async (session) => {
-        const result = await MemoryService.clearCurrentWork(session, opts.project);
+        const result = await MemoryService.clearCurrentWork(
+          session,
+          opts.project,
+          opts.cwd ?? program.opts<{ cwd?: string }>().cwd,
+        );
         process.stdout.write(ResultFormat.currentWork(
           MemoryService.getCurrentWork(session, result.projectId).project,
           result.body,

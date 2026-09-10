@@ -70,4 +70,39 @@ describe("CLI", () => {
     expect(run(home, ["project", "remove", "issuer-ui"])).toContain("removed issuer-ui");
     expect(run(home, ["project", "list"])).toContain("No projects");
   });
+
+  it("saves with --cwd auto-detect and honors --limit on search", () => {
+    const home = tempHome();
+    const repo = `${home}/repo`;
+    run(home, ["init"]);
+    run(home, ["project", "add", "issuer-ui", "--repo", repo]);
+    const saved = run(home, [
+      "memory",
+      "save",
+      "--kind",
+      "discovery",
+      "--cwd",
+      repo,
+      "--title",
+      "From cwd",
+      "--body",
+      "Resolved via repo path.",
+    ]);
+    expect(saved).toContain("saved:");
+    run(home, [
+      "memory",
+      "save",
+      "--kind",
+      "discovery",
+      "--project",
+      "issuer-ui",
+      "--title",
+      "Second hit",
+      "--body",
+      "Another Resolved note.",
+    ]);
+    const limited = run(home, ["memory", "search", "Resolved", "--limit", "1"]);
+    const hits = limited.trim().split("\n").filter((line) => line.startsWith("- "));
+    expect(hits).toHaveLength(1);
+  });
 });
