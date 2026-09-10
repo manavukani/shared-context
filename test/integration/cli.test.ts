@@ -1,6 +1,7 @@
 import { describe, it } from "node:test";
 import { execFileSync } from "node:child_process";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { expect } from "../expect.js";
 import { tempHome } from "../helpers.js";
@@ -12,6 +13,20 @@ function run(home: string, args: string[]): string {
     encoding: "utf8",
     env: { ...process.env, AI_CONTEXT_HOME: home },
   });
+}
+
+function runStatus(home: string, args: string[]): { status: number; stdout: string; stderr: string } {
+  try {
+    const stdout = run(home, args);
+    return { status: 0, stdout, stderr: "" };
+  } catch (error) {
+    const err = error as { status?: number | null; stdout?: string; stderr?: string };
+    return {
+      status: typeof err.status === "number" ? err.status : 1,
+      stdout: String(err.stdout ?? ""),
+      stderr: String(err.stderr ?? ""),
+    };
+  }
 }
 
 describe("CLI", () => {
@@ -113,12 +128,29 @@ describe("CLI", () => {
     const home = tempHome();
     run(home, ["init"]);
     run(home, ["project", "add", "issuer-ui"]);
-    let failed = false;
-    try {
-      run(home, ["standup", "update", "--project", "issuer-ui"]);
-    } catch {
-      failed = true;
-    }
-    expect(failed).toBe(true);
+    expect(runStatus(home, ["standup", "update", "--project", "issuer-ui"]).status).not.toBe(0);
+  });
+
+  it("exits nonzero for unknown projects and unhealthy doctor", () => {
+    const home = tempHome();
+    run(home, ["init"]);
+    const missing = runStatus(home, [
+      "memory",
+      "save",
+      "--kind",
+      "discovery",
+      "--project",
+      "missing",
+      "--title",
+      "Nope",
+      "--body",
+      "Should fail.",
+    ]);
+    expect(missing.status).not.toBe(0);
+    expect(missing.stderr).toContain("Unknown project");
+    writeFileSync(join(home, "config.json"), "{ this is not json\n");
+    const doctor = runStatus(home, ["doctor"]);
+    expect(doctor.status).not.toBe(0);
+    expect(doctor.stdout).toContain('"healthy": false');
   });
 });

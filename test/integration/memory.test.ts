@@ -275,4 +275,92 @@ describe("MemoryService", () => {
       }
     }
   });
+
+  it("orders search hits by blended cosine when embeddings exist", async () => {
+    ({ session } = openSession());
+    MemoryService.addProject(session, { id: "issuer-ui" });
+    await MemoryService.saveDiscovery(session, {
+      projectId: "issuer-ui",
+      title: "Low cosine",
+      body: "oauth refresh token handling",
+      source: "cli",
+    });
+    await MemoryService.saveDiscovery(session, {
+      projectId: "issuer-ui",
+      title: "High cosine",
+      body: "oauth refresh token handling extra",
+      source: "cli",
+    });
+    session.sqlite
+      .prepare("UPDATE memories SET embedding = ? WHERE title = ?")
+      .run(JSON.stringify([0, 1]), "Low cosine");
+    session.sqlite
+      .prepare("UPDATE memories SET embedding = ? WHERE title = ?")
+      .run(JSON.stringify([1, 0]), "High cosine");
+    const prevKey = process.env.OPENAI_API_KEY;
+    const prevFetch = OpenAiLayer.fetchFn;
+    process.env.OPENAI_API_KEY = "sk-test";
+    OpenAiLayer.fetchFn = (async (input: RequestInfo | URL) => {
+      if (String(input).includes("/embeddings")) {
+        return new Response(JSON.stringify({ data: [{ embedding: [1, 0] }] }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      }
+      return new Response("{}", { status: 200 });
+    }) as typeof fetch;
+    try {
+      const hits = await MemoryService.search(session, { query: "oauth refresh" });
+      expect(hits[0]?.title).toBe("High cosine");
+      expect(hits.some((hit) => hit.title === "Low cosine")).toBe(true);
+    } finally {
+      OpenAiLayer.fetchFn = prevFetch;
+      if (prevKey === undefined) {
+        delete process.env.OPENAI_API_KEY;
+      } else {
+        process.env.OPENAI_API_KEY = prevKey;
+      }
+    }
+  });
+
+  it("allows concurrent writers on the same sqlite file", async () => {
+    const opened = openSession();
+    session = opened.session;
+    MemoryService.addProject(session, { id: "issuer-ui" });
+    const other = ContextSession.open(opened.home);
+    try {
+      await Promise.all([
+        MemoryService.saveDiscovery(session, {
+          projectId: "issuer-ui",
+          title: "Writer A",
+          body: "concurrent alpha unique-term",
+          source: "cli",
+        }),
+        MemoryService.saveDiscovery(other, {
+          projectId: "issuer-ui",
+          title: "Writer B",
+          body: "concurrent beta unique-term",
+          source: "cli",
+        }),
+      ]);
+      const hits = await MemoryService.search(session, { query: "unique-term" });
+      expect(hits.some((hit) => hit.title === "Writer A")).toBe(true);
+      expect(hits.some((hit) => hit.title === "Writer B")).toBe(true);
+    } finally {
+      other.close();
+    }
+  });
+
+  it("searches punctuation-heavy FTS queries without error", async () => {
+    ({ session } = openSession());
+    MemoryService.addProject(session, { id: "issuer-ui" });
+    await MemoryService.saveDiscovery(session, {
+      projectId: "issuer-ui",
+      title: "Compiler flags",
+      body: "Use -O2 and C++ with NEAR matching.",
+      source: "cli",
+    });
+    const hits = await MemoryService.search(session, { query: "C++ -O2" });
+    expect(hits.some((hit) => hit.title === "Compiler flags")).toBe(true);
+  });
 });
