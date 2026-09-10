@@ -121,6 +121,14 @@ export class SyncEngine {
     for (const section of sections) {
       const existing = session.db.select().from(memories).where(eq(memories.id, section.id)).get();
       const hash = ContentHash.of(kind, section.title, section.body);
+      const hashOwner = session.sqlite
+        .prepare(
+          "SELECT id FROM memories WHERE project_id = ? AND kind = ? AND content_hash = ? LIMIT 1",
+        )
+        .get(projectId, kind, hash) as { id: string } | undefined;
+      if (hashOwner && hashOwner.id !== section.id) {
+        continue;
+      }
       if (existing) {
         session.db
           .update(memories)
@@ -150,6 +158,7 @@ export class SyncEngine {
             createdAt: section.createdAt ?? now,
             updatedAt: now,
           })
+          .onConflictDoNothing()
           .run();
       }
     }

@@ -36,6 +36,30 @@ describe("markdown sync", () => {
     expect(readFileSync(file, "utf8")).toContain("From DB");
   });
 
+  it("does not crash sync when markdown repeats an existing content hash", async () => {
+    ({ session } = openSession());
+    MemoryService.addProject(session, { id: "issuer-ui" });
+    const saved = await MemoryService.saveDiscovery(session, {
+      projectId: "issuer-ui",
+      title: "PKCE required",
+      body: "Public clients must use PKCE.",
+      source: "cli",
+    });
+    const file = session.paths.discoveriesFile("issuer-ui");
+    writeFileSync(
+      file,
+      `# Discoveries\n\n## PKCE required\n\n<!-- id: ${saved.memory.id} | source: cli -->\n\nPublic clients must use PKCE.\n\n## PKCE required\n\n<!-- id: 33333333-3333-4333-8333-333333333333 | source: markdown -->\n\nPublic clients must use PKCE.\n`,
+      "utf8",
+    );
+    await SyncEngine.importThenExport(session);
+    const rows = session.sqlite.prepare("SELECT id, title FROM memories WHERE project_id = ?").all("issuer-ui") as {
+      id: string;
+      title: string;
+    }[];
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.id).toBe(saved.memory.id);
+  });
+
   it("lets the DB win when both sides changed", async () => {
     ({ session } = openSession());
     MemoryService.addProject(session, { id: "issuer-ui" });
