@@ -7,7 +7,8 @@
     "node": ">=20"
   },
   "bin": {
-    "context": "./dist/cli/index.js"
+    "context": "./dist/cli/index.js",
+    "shared-context-mcp": "./dist/mcp/index.js"
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
@@ -18,7 +19,9 @@
     "format": "prettier --write .",
     "lint": "prettier --check .",
     "migrate": "node dist/db/migrate-cli.js",
-    "migrate:generate": "drizzle-kit generate"
+    "migrate:generate": "drizzle-kit generate",
+    "prepare": "npm run build",
+    "prepublishOnly": "npm run build"
   },
   "files": [
     "dist",

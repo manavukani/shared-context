@@ -1,8 +1,7 @@
 {
   "mcpServers": {
     "shared-context": {
-      "command": "node",
-      "args": ["/ABS/PATH/shared-context/dist/mcp/index.js"]
+      "command": "shared-context-mcp"
     }
   }
 }
