@@ -57,17 +57,22 @@ export class MarkdownCodec {
     if (/^\s*_None yet\._/i.test(withoutTitle)) {
       return [];
     }
-    const chunks = withoutTitle.split(/^## /m).map((chunk) => chunk.trim()).filter(Boolean);
+    const headerRe = /^## (.+)\r?\n(?:\r?\n)?<!--\s*(id:\s*[0-9a-f-]{8,}.*?)\s*-->/gim;
+    const headers = [...withoutTitle.matchAll(headerRe)];
+    if (headers.length === 0) {
+      return [];
+    }
     const sections: MemorySection[] = [];
-    for (const chunk of chunks) {
-      const lines = chunk.split(/\r?\n/);
-      const title = lines.shift()?.trim() ?? "Untitled";
-      const rest = lines.join("\n").trim();
-      const metaMatch = rest.match(/<!--\s*(.*?)\s*-->/);
-      const body = rest.replace(/<!--\s*.*?\s*-->/, "").trim();
-      const idMatch = metaMatch?.[1]?.match(/id:\s*([0-9a-f-]{8,})/i);
-      const createdMatch = metaMatch?.[1]?.match(/created:\s*(\S+)/);
-      const sourceMatch = metaMatch?.[1]?.match(/source:\s*([a-z0-9-]+)/i);
+    for (let i = 0; i < headers.length; i += 1) {
+      const header = headers[i]!;
+      const title = header[1]!.trim() || "Untitled";
+      const meta = header[2] ?? "";
+      const bodyStart = (header.index ?? 0) + header[0].length;
+      const bodyEnd = i + 1 < headers.length ? (headers[i + 1]!.index ?? withoutTitle.length) : withoutTitle.length;
+      const body = withoutTitle.slice(bodyStart, bodyEnd).trim();
+      const idMatch = meta.match(/id:\s*([0-9a-f-]{8,})/i);
+      const createdMatch = meta.match(/created:\s*(\S+)/);
+      const sourceMatch = meta.match(/source:\s*([a-z0-9-]+)/i);
       const createdAt = createdMatch ? Date.parse(createdMatch[1]!) : undefined;
       sections.push({
         id: idMatch?.[1] ?? crypto.randomUUID(),
