@@ -1,5 +1,6 @@
 import { and, desc, eq } from "drizzle-orm";
 import { resolve } from "node:path";
+import { rmSync } from "node:fs";
 import { OpenAiLayer } from "../ai/openai.js";
 import { currentWork, memories, projects, standupItems } from "../db/schema.js";
 import { ContentHash } from "../hash.js";
@@ -71,6 +72,34 @@ export class MemoryService {
       .run();
     Logger.info(session, "project.add", name, id);
     return { id, name, created: true };
+  }
+
+  static async removeProject(session: ContextSession, id: string): Promise<{ id: string; removed: true }> {
+    const projectId = MemoryService.requireProjectId(id);
+    const existing = session.db.select().from(projects).where(eq(projects.id, projectId)).get();
+    if (!existing) {
+      throw new Error(`Unknown project '${projectId}'`);
+    }
+    const mems = session.db.select().from(memories).where(eq(memories.projectId, projectId)).all();
+    for (const row of mems) {
+      session.sqlite.prepare("DELETE FROM memory_fts WHERE memory_id = ?").run(row.id);
+    }
+    session.sqlite.prepare("DELETE FROM memory_fts WHERE project_id = ?").run(projectId);
+    session.db.delete(memories).where(eq(memories.projectId, projectId)).run();
+    session.db.delete(currentWork).where(eq(currentWork.projectId, projectId)).run();
+    session.db.delete(standupItems).where(eq(standupItems.projectId, projectId)).run();
+    for (const rel of [
+      `projects/${projectId}/current-work.md`,
+      `projects/${projectId}/discoveries.md`,
+      `projects/${projectId}/decisions.md`,
+    ]) {
+      session.sqlite.prepare("DELETE FROM sync_meta WHERE rel_path = ?").run(rel);
+    }
+    session.db.delete(projects).where(eq(projects.id, projectId)).run();
+    rmSync(session.paths.projectDir(projectId), { recursive: true, force: true });
+    await SyncEngine.exportStandup(session);
+    Logger.info(session, "project.remove", existing.name, projectId);
+    return { id: projectId, removed: true as const };
   }
 
   static listProjects(session: ContextSession) {
@@ -173,6 +202,68 @@ export class MemoryService {
     };
   }
 
+  static async deleteMemory(session: ContextSession, id: string) {
+    const row = session.db.select().from(memories).where(eq(memories.id, id)).get();
+    if (!row) {
+      throw new Error(`Unknown memory '${id}'`);
+    }
+    session.db.delete(memories).where(eq(memories.id, id)).run();
+    session.sqlite.prepare("DELETE FROM memory_fts WHERE memory_id = ?").run(id);
+    await SyncEngine.exportMemories(session, row.projectId, row.kind as MemoryKind);
+    Logger.info(session, "memory.delete", `${row.kind} ${id}`, row.projectId);
+    return { deleted: true as const, memory: row };
+  }
+
+  static async editMemory(
+    session: ContextSession,
+    input: { id: string; title?: string; body?: string; source?: string },
+  ) {
+    const row = session.db.select().from(memories).where(eq(memories.id, input.id)).get();
+    if (!row) {
+      throw new Error(`Unknown memory '${input.id}'`);
+    }
+    if (input.title === undefined && input.body === undefined) {
+      throw new Error("title or body is required");
+    }
+    const title = SecretRedactor.redact((input.title ?? row.title).trim());
+    const body = SecretRedactor.redact((input.body ?? row.body).trim());
+    if (!title || !body) {
+      throw new Error("title and body are required");
+    }
+    const kind = row.kind as MemoryKind;
+    const contentHash = ContentHash.of(kind, title, body);
+    const duplicate = session.db
+      .select()
+      .from(memories)
+      .where(and(eq(memories.projectId, row.projectId), eq(memories.kind, kind), eq(memories.contentHash, contentHash)))
+      .get();
+    if (duplicate && duplicate.id !== row.id) {
+      throw new Error("edit would collide with an existing memory");
+    }
+    const now = Date.now();
+    session.db
+      .update(memories)
+      .set({
+        title,
+        body,
+        contentHash,
+        source: input.source ? MemoryService.normalizeSource(input.source) : row.source,
+        updatedAt: now,
+      })
+      .where(eq(memories.id, row.id))
+      .run();
+    MemoryService.upsertFts(session, {
+      id: row.id,
+      projectId: row.projectId,
+      kind,
+      title,
+      body,
+    });
+    await SyncEngine.exportMemories(session, row.projectId, kind);
+    Logger.info(session, "memory.edit", `${kind} ${row.id} ${title}`, row.projectId);
+    return session.db.select().from(memories).where(eq(memories.id, row.id)).get()!;
+  }
+
   static async updateCurrentWork(
     session: ContextSession,
     input: { projectId?: string; cwd?: string; body: string; source?: string },
@@ -201,6 +292,15 @@ export class MemoryService {
     await SyncEngine.exportCurrentWork(session, projectId);
     Logger.info(session, "current_work.update", `${body.slice(0, 80)}`, projectId);
     return { projectId, body };
+  }
+
+  static async clearCurrentWork(session: ContextSession, projectId?: string, cwd?: string) {
+    const id = MemoryService.resolveProjectId(session, projectId, cwd);
+    session.db.delete(currentWork).where(eq(currentWork.projectId, id)).run();
+    session.sqlite.prepare("DELETE FROM memory_fts WHERE memory_id = ?").run(`current:${id}`);
+    await SyncEngine.exportCurrentWork(session, id);
+    Logger.info(session, "current_work.clear", "ok", id);
+    return { projectId: id, body: "" };
   }
 
   static getCurrentWork(session: ContextSession, projectId?: string, cwd?: string) {

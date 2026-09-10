@@ -92,6 +92,21 @@ project
     }
   });
 
+project
+  .command("remove")
+  .argument("<id>", "Project slug")
+  .description("Delete a project and its memories, current work, and stand-up line")
+  .action(async (id: string) => {
+    try {
+      await withSession(program.opts<{ home?: string }>().home, async (session) => {
+        const result = await MemoryService.removeProject(session, id);
+        process.stdout.write(ResultFormat.removedProject(result.id));
+      });
+    } catch (error) {
+      fail(error);
+    }
+  });
+
 const memory = program.command("memory").description("Search and save memories");
 
 memory
@@ -138,6 +153,39 @@ memory
           source: opts.source,
         });
         process.stdout.write(ResultFormat.saved(result));
+      });
+    } catch (error) {
+      fail(error);
+    }
+  });
+
+memory
+  .command("delete")
+  .requiredOption("--id <id>", "Memory UUID")
+  .description("Delete a discovery or decision")
+  .action(async (opts: { id: string }) => {
+    try {
+      await withSession(program.opts<{ home?: string }>().home, async (session) => {
+        const result = await MemoryService.deleteMemory(session, opts.id);
+        process.stdout.write(ResultFormat.deleted(result.memory.id));
+      });
+    } catch (error) {
+      fail(error);
+    }
+  });
+
+memory
+  .command("edit")
+  .requiredOption("--id <id>", "Memory UUID")
+  .option("--title <title>", "Replacement title")
+  .option("--body <body>", "Replacement body")
+  .option("--source <source>", "claude-code | cursor | augment | cli")
+  .description("Edit a discovery or decision")
+  .action(async (opts: { id: string; title?: string; body?: string; source?: string }) => {
+    try {
+      await withSession(program.opts<{ home?: string }>().home, async (session) => {
+        const memory = await MemoryService.editMemory(session, opts);
+        process.stdout.write(ResultFormat.saved({ saved: true, duplicate: false, memory }));
       });
     } catch (error) {
       fail(error);
@@ -211,6 +259,24 @@ work
           body: opts.body,
           source: opts.source,
         });
+        process.stdout.write(ResultFormat.currentWork(
+          MemoryService.getCurrentWork(session, result.projectId).project,
+          result.body,
+        ));
+      });
+    } catch (error) {
+      fail(error);
+    }
+  });
+
+work
+  .command("clear")
+  .description("Clear current work for a project")
+  .option("--project <id>", "Project slug")
+  .action(async (opts: { project?: string }) => {
+    try {
+      await withSession(program.opts<{ home?: string }>().home, async (session) => {
+        const result = await MemoryService.clearCurrentWork(session, opts.project);
         process.stdout.write(ResultFormat.currentWork(
           MemoryService.getCurrentWork(session, result.projectId).project,
           result.body,

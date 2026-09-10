@@ -45,4 +45,29 @@ describe("CLI", () => {
     expect(existsSync(`${home}/projects/issuer-ui/discoveries.md`)).toBe(true);
     expect(readFileSync(`${home}/projects/issuer-ui/discoveries.md`, "utf8")).toContain("Callback URL");
   });
+
+  it("deletes memories and removes projects", () => {
+    const home = tempHome();
+    run(home, ["init"]);
+    run(home, ["project", "add", "issuer-ui"]);
+    const saved = run(home, [
+      "memory",
+      "save",
+      "--kind",
+      "discovery",
+      "--project",
+      "issuer-ui",
+      "--title",
+      "Temp",
+      "--body",
+      "Will be deleted.",
+    ]);
+    const id = saved.match(/\(([0-9a-f-]{36})\)/)?.[1];
+    expect(Boolean(id)).toBe(true);
+    const edited = run(home, ["memory", "edit", "--id", id!, "--title", "Renamed"]);
+    expect(edited).toContain("Renamed");
+    expect(run(home, ["memory", "delete", "--id", id!])).toContain("deleted:");
+    expect(run(home, ["project", "remove", "issuer-ui"])).toContain("removed issuer-ui");
+    expect(run(home, ["project", "list"])).toContain("No projects");
+  });
 });

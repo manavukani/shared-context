@@ -100,4 +100,30 @@ describe("MemoryService", () => {
     const id = MemoryService.resolveProjectId(session, undefined, "/tmp/work/issuer-ui/src");
     expect(id).toBe("issuer-ui");
   });
+
+  it("edits and deletes memories and can remove a project", async () => {
+    ({ session } = openSession());
+    MemoryService.addProject(session, { id: "issuer-ui" });
+    const saved = await MemoryService.saveDiscovery(session, {
+      projectId: "issuer-ui",
+      title: "Old title",
+      body: "Old body that will change.",
+      source: "cli",
+    });
+    const edited = await MemoryService.editMemory(session, {
+      id: saved.memory.id,
+      title: "New title",
+      body: "New body after the edit.",
+    });
+    expect(edited.title).toBe("New title");
+    expect(edited.body).toBe("New body after the edit.");
+    await MemoryService.deleteMemory(session, saved.memory.id);
+    const hits = await MemoryService.search(session, { query: "New body", projectId: "issuer-ui" });
+    expect(hits).toHaveLength(0);
+    await MemoryService.updateCurrentWork(session, { projectId: "issuer-ui", body: "WIP" });
+    await MemoryService.clearCurrentWork(session, "issuer-ui");
+    expect(MemoryService.getCurrentWork(session, "issuer-ui").currentWork).toBe("");
+    await MemoryService.removeProject(session, "issuer-ui");
+    expect(MemoryService.listProjects(session)).toHaveLength(0);
+  });
 });

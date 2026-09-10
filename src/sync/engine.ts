@@ -165,7 +165,16 @@ export class SyncEngine {
           .run();
       }
     }
-    // Rows present in SQLite but missing from markdown are kept (DB wins; no deletes).
+    const keepIds = new Set(sections.map((section) => section.id));
+    const staleSql =
+      keepIds.size === 0
+        ? "SELECT id FROM memories WHERE project_id = ? AND kind = ?"
+        : `SELECT id FROM memories WHERE project_id = ? AND kind = ? AND id NOT IN (${[...keepIds].map(() => "?").join(",")})`;
+    const stale = session.sqlite.prepare(staleSql).all(projectId, kind, ...keepIds) as { id: string }[];
+    for (const row of stale) {
+      session.db.delete(memories).where(eq(memories.id, row.id)).run();
+      session.sqlite.prepare("DELETE FROM memory_fts WHERE memory_id = ?").run(row.id);
+    }
   }
 
   private static applyStandupMarkdown(session: ContextSession, markdown: string): void {

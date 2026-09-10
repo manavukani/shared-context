@@ -36,6 +36,14 @@ export class ResultFormat {
     return `${tag}: [${result.memory.kind}] ${result.memory.title} (${result.memory.id})\n${result.memory.body}\n`;
   }
 
+  static deleted(id: string): string {
+    return `deleted: ${id}\n`;
+  }
+
+  static removedProject(id: string): string {
+    return `removed ${id}\n`;
+  }
+
   static search(rows: { id: string; projectId: string; kind: string; title: string; excerpt: string }[]): string {
     if (rows.length === 0) {
       return "No matches.\n";

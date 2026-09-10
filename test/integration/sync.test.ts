@@ -33,7 +33,9 @@ describe("markdown sync", () => {
     await SyncEngine.importThenExport(session);
     const hits = await MemoryService.search(session, { query: "Edited" });
     expect(hits.some((hit) => hit.title === "From markdown")).toBe(true);
-    expect(readFileSync(file, "utf8")).toContain("From DB");
+    expect(hits.some((hit) => hit.title === "From DB")).toBe(false);
+    expect(readFileSync(file, "utf8")).toContain("From markdown");
+    expect(readFileSync(file, "utf8")).not.toContain("From DB");
   });
 
   it("does not crash sync when markdown repeats an existing content hash", async () => {
@@ -115,5 +117,35 @@ describe("markdown sync", () => {
     await SyncEngine.importThenExport(session);
     expect(readFileSync(file, "utf8")).toContain("Newer from DB, concurrent.");
     expect(readFileSync(file, "utf8")).not.toContain("DISK edit, concurrent.");
+  });
+
+  it("removes memories that disappear from markdown when the file wins", async () => {
+    ({ session } = openSession());
+    MemoryService.addProject(session, { id: "issuer-ui" });
+    const first = await MemoryService.saveDiscovery(session, {
+      projectId: "issuer-ui",
+      title: "Keep me",
+      body: "This section stays.",
+      source: "cli",
+    });
+    const second = await MemoryService.saveDiscovery(session, {
+      projectId: "issuer-ui",
+      title: "Drop me",
+      body: "This section is removed on disk.",
+      source: "cli",
+    });
+    const file = session.paths.discoveriesFile("issuer-ui");
+    writeFileSync(
+      file,
+      `# Discoveries\n\n## Keep me\n\n<!-- id: ${first.memory.id} | source: cli -->\n\nThis section stays.\n`,
+      "utf8",
+    );
+    await SyncEngine.importThenExport(session);
+    const rows = session.sqlite.prepare("SELECT id FROM memories WHERE project_id = ?").all("issuer-ui") as {
+      id: string;
+    }[];
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.id).toBe(first.memory.id);
+    expect(rows.some((row) => row.id === second.memory.id)).toBe(false);
   });
 });
