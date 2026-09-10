@@ -221,6 +221,9 @@ standup
   .action(async (opts: { project?: string; sentence?: string; fromCurrentWork?: boolean }) => {
     try {
       await withSession(program.opts<{ home?: string }>().home, async (session) => {
+        if (opts.project && !opts.sentence && !opts.fromCurrentWork) {
+          throw new Error("standup update --project requires --sentence (or pass --from-current-work)");
+        }
         const items = await MemoryService.updateStandup(session, {
           projectId: opts.project,
           sentence: opts.sentence,

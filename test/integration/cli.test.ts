@@ -105,4 +105,17 @@ describe("CLI", () => {
     const hits = limited.trim().split("\n").filter((line) => line.startsWith("- "));
     expect(hits).toHaveLength(1);
   });
+
+  it("exits nonzero when standup update has --project but no --sentence", () => {
+    const home = tempHome();
+    run(home, ["init"]);
+    run(home, ["project", "add", "issuer-ui"]);
+    let failed = false;
+    try {
+      run(home, ["standup", "update", "--project", "issuer-ui"]);
+    } catch {
+      failed = true;
+    }
+    expect(failed).toBe(true);
+  });
 });
