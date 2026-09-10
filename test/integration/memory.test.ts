@@ -116,6 +116,11 @@ describe("MemoryService", () => {
     expect(id).toBe("issuer-ui");
   });
 
+  it("does not treat repo-two as a child of repo", () => {
+    expect(MemoryService.cwdMatchesRepo("/tmp/work/repo-two", "/tmp/work/repo")).toBe(false);
+    expect(MemoryService.cwdMatchesRepo("/tmp/work/issuer-ui/src", "/tmp/work/issuer-ui")).toBe(true);
+  });
+
   it("edits and deletes memories and can remove a project", async () => {
     ({ session } = openSession());
     MemoryService.addProject(session, { id: "issuer-ui" });

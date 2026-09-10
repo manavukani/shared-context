@@ -1,5 +1,5 @@
 import { and, desc, eq, isNotNull } from "drizzle-orm";
-import { resolve } from "node:path";
+import { isAbsolute, relative, resolve } from "node:path";
 import { rmSync } from "node:fs";
 import { OpenAiLayer } from "../ai/openai.js";
 import { currentWork, memories, projects, standupItems, type ProjectRow } from "../db/schema.js";
@@ -114,7 +114,7 @@ export class MemoryService {
     }
     const fromCwd = cwd ? resolve(cwd) : process.cwd();
     const matches = MemoryService.listProjects(session)
-      .filter((p) => p.repoPath && (fromCwd === p.repoPath || fromCwd.startsWith(`${p.repoPath}/`)))
+      .filter((p) => p.repoPath && MemoryService.cwdMatchesRepo(fromCwd, p.repoPath))
       .sort((a, b) => (b.repoPath?.length ?? 0) - (a.repoPath?.length ?? 0));
     if (matches[0]) {
       return matches[0].id;
@@ -484,6 +484,17 @@ export class MemoryService {
       ai: aiStatus,
       aiError: OpenAiLayer.lastError,
     };
+  }
+
+  static cwdMatchesRepo(cwd: string, repoPath: string): boolean {
+    const fold = process.platform === "win32" || process.platform === "darwin";
+    const from = fold ? resolve(cwd).toLowerCase() : resolve(cwd);
+    const repo = fold ? resolve(repoPath).toLowerCase() : resolve(repoPath);
+    if (from === repo) {
+      return true;
+    }
+    const rel = relative(repo, from);
+    return rel !== "" && !rel.startsWith("..") && !isAbsolute(rel);
   }
 
   static requireProjectId(id: string): string {
