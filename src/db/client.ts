@@ -30,7 +30,8 @@ export class DatabaseClient {
     const client = new DatabaseClient(sqlitePath);
     migrate(client.db, { migrationsFolder: DatabaseClient.migrationsFolder() });
     client.ensureFts();
-    client.rebuildFts();
+    client.ensureFtsTriggers();
+    client.rebuildFtsIfEmpty();
     return client;
   }
 
@@ -49,6 +50,52 @@ export class DatabaseClient {
         tokenize = 'porter unicode61'
       );
     `);
+  }
+
+  ensureFtsTriggers(): void {
+    this.sqlite.exec(`
+      CREATE TRIGGER IF NOT EXISTS memories_ai AFTER INSERT ON memories BEGIN
+        INSERT INTO memory_fts(memory_id, project_id, kind, title, body)
+        VALUES (new.id, new.project_id, new.kind, new.title, new.body);
+      END;
+      CREATE TRIGGER IF NOT EXISTS memories_ad AFTER DELETE ON memories BEGIN
+        DELETE FROM memory_fts WHERE memory_id = old.id;
+      END;
+      CREATE TRIGGER IF NOT EXISTS memories_au AFTER UPDATE ON memories BEGIN
+        DELETE FROM memory_fts WHERE memory_id = old.id;
+        INSERT INTO memory_fts(memory_id, project_id, kind, title, body)
+        VALUES (new.id, new.project_id, new.kind, new.title, new.body);
+      END;
+      CREATE TRIGGER IF NOT EXISTS current_work_ai AFTER INSERT ON current_work BEGIN
+        INSERT INTO memory_fts(memory_id, project_id, kind, title, body)
+        VALUES ('current:' || new.project_id, new.project_id, 'current_work', 'Current work', new.body);
+      END;
+      CREATE TRIGGER IF NOT EXISTS current_work_ad AFTER DELETE ON current_work BEGIN
+        DELETE FROM memory_fts WHERE memory_id = 'current:' || old.project_id;
+      END;
+      CREATE TRIGGER IF NOT EXISTS current_work_au AFTER UPDATE ON current_work BEGIN
+        DELETE FROM memory_fts WHERE memory_id = 'current:' || old.project_id;
+        INSERT INTO memory_fts(memory_id, project_id, kind, title, body)
+        VALUES ('current:' || new.project_id, new.project_id, 'current_work', 'Current work', new.body);
+      END;
+    `);
+  }
+
+  rebuildFtsIfEmpty(): void {
+    const ready = this.sqlite.prepare("SELECT name FROM sqlite_master WHERE name = 'memories'").get();
+    if (!ready) {
+      return;
+    }
+    const fts = this.sqlite.prepare("SELECT count(*) AS c FROM memory_fts").get() as { c: number };
+    if (fts.c > 0) {
+      return;
+    }
+    const mems = this.sqlite.prepare("SELECT count(*) AS c FROM memories").get() as { c: number };
+    const works = this.sqlite.prepare("SELECT count(*) AS c FROM current_work").get() as { c: number };
+    if (mems.c + works.c === 0) {
+      return;
+    }
+    this.rebuildFts();
   }
 
   rebuildFts(): void {

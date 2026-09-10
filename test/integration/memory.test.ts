@@ -2,7 +2,7 @@ import { afterEach, describe, it } from "node:test";
 import { OpenAiLayer } from "../../src/ai/openai.js";
 import { MemoryService } from "../../src/memory/service.js";
 import { ResultFormat } from "../../src/memory/format.js";
-import type { ContextSession } from "../../src/session.js";
+import { ContextSession } from "../../src/session.js";
 import { expect } from "../expect.js";
 import { openSession } from "../helpers.js";
 
@@ -141,6 +141,31 @@ describe("MemoryService", () => {
   it("does not sink un-embedded FTS hits when re-ranking", () => {
     expect(MemoryService.blendedScore(0, null)).toBeGreaterThan(MemoryService.blendedScore(5, 0));
     expect(MemoryService.blendedScore(0, null)).toBeGreaterThan(MemoryService.blendedScore(0, 0));
+  });
+
+  it("keeps FTS rows across session open using triggers instead of a full rebuild", async () => {
+    const opened = openSession();
+    session = opened.session;
+    MemoryService.addProject(session, { id: "issuer-ui" });
+    await MemoryService.saveDiscovery(session, {
+      projectId: "issuer-ui",
+      title: "Trigger path",
+      body: "Searchable via FTS triggers.",
+      source: "cli",
+    });
+    const triggers = session.sqlite
+      .prepare("SELECT name FROM sqlite_master WHERE type = 'trigger' AND name LIKE 'memories_%'")
+      .all() as { name: string }[];
+    expect(triggers.length).toBeGreaterThan(0);
+    session.sqlite
+      .prepare("INSERT INTO memory_fts (memory_id, project_id, kind, title, body) VALUES ('sentinel', 'issuer-ui', 'discovery', 's', 's')")
+      .run();
+    session.close();
+    session = ContextSession.open(opened.home);
+    const sentinel = session.sqlite.prepare("SELECT memory_id FROM memory_fts WHERE memory_id = 'sentinel'").get();
+    expect(Boolean(sentinel)).toBe(true);
+    const hits = await MemoryService.search(session, { query: "Searchable" });
+    expect(hits.some((hit) => hit.title === "Trigger path")).toBe(true);
   });
 
   it("bounds semantic duplicate scans to recent embedded rows", () => {

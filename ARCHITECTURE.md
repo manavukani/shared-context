@@ -39,7 +39,7 @@ db/context.sqlite
 | `standup_items` | one sentence per project; **global** across repos |
 | `operation_logs` | tool/CLI operations (redacted) |
 | `sync_meta` | last file hash + last DB export hash per markdown path |
-| `memory_fts` | FTS5 virtual table (triggers keep it in sync) |
+| `memory_fts` | FTS5 virtual table (INSERT/UPDATE/DELETE triggers keep it in sync) |
 
 `memories.embedding` is an optional JSON float array written only when OpenAI is on. That is a column, not a vector database.
 

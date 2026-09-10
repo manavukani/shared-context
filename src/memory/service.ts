@@ -82,11 +82,6 @@ export class MemoryService {
     if (!existing) {
       throw new Error(`Unknown project '${projectId}'`);
     }
-    const mems = session.db.select().from(memories).where(eq(memories.projectId, projectId)).all();
-    for (const row of mems) {
-      session.sqlite.prepare("DELETE FROM memory_fts WHERE memory_id = ?").run(row.id);
-    }
-    session.sqlite.prepare("DELETE FROM memory_fts WHERE project_id = ?").run(projectId);
     session.db.delete(memories).where(eq(memories.projectId, projectId)).run();
     session.db.delete(currentWork).where(eq(currentWork.projectId, projectId)).run();
     session.db.delete(standupItems).where(eq(standupItems.projectId, projectId)).run();
@@ -188,13 +183,6 @@ export class MemoryService {
         updatedAt: now,
       })
       .run();
-    MemoryService.upsertFts(session, {
-      id,
-      projectId,
-      kind,
-      title,
-      body,
-    });
     await SyncEngine.exportMemories(session, projectId, kind);
     Logger.info(session, "memory.save", `${kind} ${id} ${title}`, projectId);
     return {
@@ -210,7 +198,6 @@ export class MemoryService {
       throw new Error(`Unknown memory '${id}'`);
     }
     session.db.delete(memories).where(eq(memories.id, id)).run();
-    session.sqlite.prepare("DELETE FROM memory_fts WHERE memory_id = ?").run(id);
     await SyncEngine.exportMemories(session, row.projectId, row.kind as MemoryKind);
     Logger.info(session, "memory.delete", `${row.kind} ${id}`, row.projectId);
     return { deleted: true as const, memory: row };
@@ -254,13 +241,6 @@ export class MemoryService {
       })
       .where(eq(memories.id, row.id))
       .run();
-    MemoryService.upsertFts(session, {
-      id: row.id,
-      projectId: row.projectId,
-      kind,
-      title,
-      body,
-    });
     await SyncEngine.exportMemories(session, row.projectId, kind);
     Logger.info(session, "memory.edit", `${kind} ${row.id} ${title}`, row.projectId);
     return session.db.select().from(memories).where(eq(memories.id, row.id)).get()!;
@@ -284,13 +264,6 @@ export class MemoryService {
         set: { body, source: MemoryService.normalizeSource(input.source), updatedAt: now },
       })
       .run();
-    MemoryService.upsertFts(session, {
-      id: `current:${projectId}`,
-      projectId,
-      kind: "current_work",
-      title: "Current work",
-      body,
-    });
     await SyncEngine.exportCurrentWork(session, projectId);
     Logger.info(session, "current_work.update", `${body.slice(0, 80)}`, projectId);
     return { projectId, body };
@@ -299,7 +272,6 @@ export class MemoryService {
   static async clearCurrentWork(session: ContextSession, projectId?: string, cwd?: string) {
     const id = MemoryService.resolveProjectId(session, projectId, cwd);
     session.db.delete(currentWork).where(eq(currentWork.projectId, id)).run();
-    session.sqlite.prepare("DELETE FROM memory_fts WHERE memory_id = ?").run(`current:${id}`);
     await SyncEngine.exportCurrentWork(session, id);
     Logger.info(session, "current_work.clear", "ok", id);
     return { projectId: id, body: "" };
@@ -545,16 +517,6 @@ export class MemoryService {
       .filter(Boolean)
       .map((token) => `"${token.replace(/"/g, '""')}"`)
       .join(" AND ");
-  }
-
-  static upsertFts(
-    session: ContextSession,
-    row: { id: string; projectId: string; kind: string; title: string; body: string },
-  ): void {
-    session.sqlite.prepare("DELETE FROM memory_fts WHERE memory_id = ?").run(row.id);
-    session.sqlite
-      .prepare("INSERT INTO memory_fts (memory_id, project_id, kind, title, body) VALUES (?, ?, ?, ?, ?)")
-      .run(row.id, row.projectId, row.kind, row.title, row.body);
   }
 
   private static async findSemanticDuplicate(

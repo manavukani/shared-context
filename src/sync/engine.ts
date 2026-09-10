@@ -37,7 +37,6 @@ export class SyncEngine {
       imported.push("standup.md");
     }
     await SyncEngine.exportAll(session);
-    session.client.rebuildFts();
     Logger.info(session, "sync", `imported ${imported.length} file(s)`);
     return { imported, exported: ["markdown"] };
   }
@@ -173,7 +172,6 @@ export class SyncEngine {
     const stale = session.sqlite.prepare(staleSql).all(projectId, kind, ...keepIds) as { id: string }[];
     for (const row of stale) {
       session.db.delete(memories).where(eq(memories.id, row.id)).run();
-      session.sqlite.prepare("DELETE FROM memory_fts WHERE memory_id = ?").run(row.id);
     }
   }
 
