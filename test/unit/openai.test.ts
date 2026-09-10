@@ -32,4 +32,24 @@ describe("OpenAiLayer", () => {
     expect(OpenAiLayer.lastError).toContain("gateway down");
     expect(await ai.probe()).toBe(false);
   });
+
+  it("retries failed fetches then succeeds", async () => {
+    OpenAiLayer.lastError = null;
+    let attempts = 0;
+    const fetchFn = (async () => {
+      attempts += 1;
+      if (attempts < 3) {
+        throw new Error("temporary");
+      }
+      return new Response(JSON.stringify({ data: [{ embedding: [1, 0] }] }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    }) as typeof fetch;
+    const ai = new OpenAiLayer(new AppConfig("/tmp/config.json", AppConfig.defaults()), "sk-test", fetchFn);
+    const embedding = await ai.embed("hello");
+    expect(attempts).toBe(3);
+    expect(embedding?.[0]).toBe(1);
+    expect(OpenAiLayer.lastError).toBe(null);
+  });
 });

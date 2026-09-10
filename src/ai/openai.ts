@@ -126,32 +126,48 @@ export class OpenAiLayer {
     return json != null;
   }
 
+  private static readonly timeoutMs = 10_000;
+  private static readonly retries = 2;
+
   private async post<T>(path: string, body: unknown, method = "POST"): Promise<T | null> {
     if (!this.apiKey || this.status === "off") {
       return null;
     }
-    try {
-      const response = await this.fetchFn(`https://api.openai.com/v1${path}`, {
-        method,
-        headers: {
-          authorization: `Bearer ${this.apiKey}`,
-          "content-type": "application/json",
-        },
-        body: method === "GET" ? undefined : JSON.stringify(body),
-      });
-      if (!response.ok) {
-        const detail = `[shared-context] openai ${path} HTTP ${response.status}`;
-        OpenAiLayer.lastError = detail;
-        process.stderr.write(`${detail}\n`);
+    const url = `https://api.openai.com/v1${path}`;
+    let lastDetail = "";
+    for (let attempt = 0; attempt <= OpenAiLayer.retries; attempt += 1) {
+      try {
+        const response = await this.fetchFn(url, {
+          method,
+          headers: {
+            authorization: `Bearer ${this.apiKey}`,
+            "content-type": "application/json",
+          },
+          body: method === "GET" ? undefined : JSON.stringify(body),
+          signal: AbortSignal.timeout(OpenAiLayer.timeoutMs),
+        });
+        if (!response.ok) {
+          lastDetail = `[shared-context] openai ${path} HTTP ${response.status}`;
+          if (response.status >= 500 && attempt < OpenAiLayer.retries) {
+            continue;
+          }
+          OpenAiLayer.lastError = lastDetail;
+          process.stderr.write(`${lastDetail}\n`);
+          return null;
+        }
+        OpenAiLayer.lastError = null;
+        return (await response.json()) as T;
+      } catch (error) {
+        lastDetail = `[shared-context] openai ${path} failed: ${String(error)}`;
+        if (attempt < OpenAiLayer.retries) {
+          continue;
+        }
+        OpenAiLayer.lastError = lastDetail;
+        process.stderr.write(`${lastDetail}\n`);
         return null;
       }
-      OpenAiLayer.lastError = null;
-      return (await response.json()) as T;
-    } catch (error) {
-      const detail = `[shared-context] openai ${path} failed: ${String(error)}`;
-      OpenAiLayer.lastError = detail;
-      process.stderr.write(`${detail}\n`);
-      return null;
     }
+    OpenAiLayer.lastError = lastDetail || `[shared-context] openai ${path} failed`;
+    return null;
   }
 }
