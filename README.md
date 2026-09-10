@@ -40,7 +40,7 @@ git clone https://github.com/manavukani/shared-context.git
 cd shared-context
 npm install
 npm run build
-npm link          # exposes the `context` binary
+npm link          # exposes `context` and `shared-context-mcp`
 ```
 
 Or run without linking:
@@ -69,12 +69,13 @@ context project add issuer-ui --name "Issuer UI" --repo /path/to/issuer-ui
 
 | Tool                  | Purpose                                                     |
 | --------------------- | ----------------------------------------------------------- |
+| `add_project`         | Register or update a project (id, name, repo path)          |
 | `get_project_context` | Current work + stand-up line + recent discoveries/decisions |
 | `get_current_work`    | Current-work note only                                      |
 | `save_discovery`      | Reusable finding (deduped)                                  |
 | `save_decision`       | Reusable choice (deduped)                                   |
 | `update_current_work` | Replace current work after real progress                    |
-| `search_memory`       | SQLite FTS5 (optional OpenAI re-rank)                       |
+| `search_memory`       | SQLite FTS5 (optional OpenAI re-rank); optional `limit`     |
 | `get_standup`         | Global stand-up                                             |
 | `update_standup`      | Set sentences, or `generate: true` from current work        |
 
@@ -88,8 +89,7 @@ Project `.mcp.json` or user config:
 {
   "mcpServers": {
     "shared-context": {
-      "command": "node",
-      "args": ["/ABS/PATH/shared-context/dist/mcp/index.js"]
+      "command": "shared-context-mcp"
     }
   }
 }
@@ -98,7 +98,7 @@ Project `.mcp.json` or user config:
 CLI:
 
 ```bash
-claude mcp add shared-context -- node /ABS/PATH/shared-context/dist/mcp/index.js
+claude mcp add shared-context -- shared-context-mcp
 ```
 
 See `examples/mcp/claude-code.json`.
@@ -111,8 +111,7 @@ See `examples/mcp/claude-code.json`.
 {
   "mcpServers": {
     "shared-context": {
-      "command": "node",
-      "args": ["/ABS/PATH/shared-context/dist/mcp/index.js"]
+      "command": "shared-context-mcp"
     }
   }
 }
@@ -129,15 +128,14 @@ Add a stdio server in `~/.augment/settings.json` (or via `auggie mcp add-json`):
   "mcpServers": {
     "shared-context": {
       "type": "stdio",
-      "command": "node",
-      "args": ["/ABS/PATH/shared-context/dist/mcp/index.js"]
+      "command": "shared-context-mcp"
     }
   }
 }
 ```
 
 ```bash
-auggie mcp add-json shared-context '{"type":"stdio","command":"node","args":["/ABS/PATH/shared-context/dist/mcp/index.js"]}'
+auggie mcp add-json shared-context '{"type":"stdio","command":"shared-context-mcp"}'
 ```
 
 See `examples/mcp/augment.json`.
@@ -148,21 +146,25 @@ See `examples/mcp/augment.json`.
 context init
 context project list
 context project add issuer-ui --name "Issuer UI" --repo ~/src/issuer-ui
+context project remove issuer-ui
 context memory save --kind discovery --project issuer-ui --title "PKCE" --body "Public clients must use PKCE." --source claude-code
-context memory search PKCE
+context memory save --kind discovery --cwd ~/src/issuer-ui --title "From cwd" --body "Resolved via repo path."
+context memory search PKCE --limit 5
+context memory edit --id <uuid> --title "Updated title"
+context memory delete --id <uuid>
 context standup update --project issuer-ui --sentence "Shipping OAuth refresh."
 context standup update --from-current-work
 context standup show
-context standup update --from-current-work
 context work show --project issuer-ui
 context work update --project issuer-ui --body "Adding PKCE." --source cursor
+context work clear --project issuer-ui
 context sync
 context doctor
 ```
 
-Global option: `--home <path>` (also `AI_CONTEXT_HOME`).
+Global options: `--home <path>` (also `AI_CONTEXT_HOME`) and `--cwd <path>` for repo auto-detect.
 
-npm scripts: `build`, `start:mcp`, `context`, `test`, `migrate`.
+npm scripts: `build`, `start:mcp`, `context`, `test`, `typecheck`, `lint`, `migrate`.
 
 ## Optional OpenAI
 
