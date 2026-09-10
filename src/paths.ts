@@ -1,5 +1,5 @@
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 
 export class ContextPaths {
   readonly home: string;
@@ -29,7 +29,8 @@ export class ContextPaths {
   }
 
   get sqlitePath(): string {
-    return join(this.dbDir, "context.sqlite");
+    const override = process.env.AI_CONTEXT_DB?.trim();
+    return override ? resolve(override) : join(this.dbDir, "context.sqlite");
   }
 
   get projectsDir(): string {

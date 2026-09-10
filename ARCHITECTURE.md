@@ -13,14 +13,14 @@ src/ai         Optional OpenAI (summarize, classify, duplicate, semantic rank)
 src/logging    Operation log (stderr + SQLite); never writes secrets
 src/memory     CRUD, dedup, project scoping, stand-up
 src/config.ts  ~/Documents/ai-context/config.json
-src/paths.ts   Storage layout + AI_CONTEXT_HOME override
+src/paths.ts   Storage layout + AI_CONTEXT_HOME / AI_CONTEXT_DB overrides
 ```
 
 `ContextSession` is the composition root. MCP tools and CLI commands call `MemoryService` / `SyncEngine` static methods with a session. Future web/cloud/vector/ingest adapters can sit beside these modules without changing the store.
 
 ## Storage layout
 
-Default home: `~/Documents/ai-context` (override with `AI_CONTEXT_HOME`).
+Default home: `~/Documents/ai-context` (override with `AI_CONTEXT_HOME`). `AI_CONTEXT_DB` may point at a specific SQLite file.
 
 ```
 config.json

@@ -1,10 +1,13 @@
 #!/usr/bin/env node
 import { Command } from "commander";
 import { AppConfig } from "../config.js";
+import { EnvFile } from "../env.js";
 import { MemoryService } from "../memory/service.js";
 import { ResultFormat } from "../memory/format.js";
 import { ContextSession } from "../session.js";
 import { SyncEngine } from "../sync/engine.js";
+
+EnvFile.load();
 
 function withSession<T>(home: string | undefined, fn: (session: ContextSession) => Promise<T> | T): Promise<T> {
   const session = ContextSession.open(home);

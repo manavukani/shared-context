@@ -1,8 +1,11 @@
 #!/usr/bin/env node
 import { serveStdio } from "@modelcontextprotocol/server/stdio";
+import { EnvFile } from "../env.js";
 import { ContextSession } from "../session.js";
 import { SyncEngine } from "../sync/engine.js";
 import { SharedContextServer } from "./server.js";
+
+EnvFile.load();
 
 function createServer() {
   const session = ContextSession.open();
