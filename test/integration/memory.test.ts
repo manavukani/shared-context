@@ -1,0 +1,366 @@
+import { afterEach, describe, it } from "node:test";
+import { OpenAiLayer } from "../../src/ai/openai.js";
+import { MemoryService } from "../../src/memory/service.js";
+import { ResultFormat } from "../../src/memory/format.js";
+import { ContextSession } from "../../src/session.js";
+import { expect } from "../expect.js";
+import { openSession } from "../helpers.js";
+
+describe("MemoryService", () => {
+  let session: ContextSession;
+
+  afterEach(() => {
+    session?.close();
+  });
+
+  it("saves, retrieves, and deduplicates project memories", async () => {
+    ({ session } = openSession());
+    MemoryService.addProject(session, { id: "issuer-ui", name: "Issuer UI" });
+
+    const discovery = await MemoryService.saveDiscovery(session, {
+      projectId: "issuer-ui",
+      title: "PKCE required",
+      body: "Public clients must use PKCE on the token endpoint.",
+      source: "claude-code",
+    });
+    expect(discovery.saved).toBe(true);
+
+    const again = await MemoryService.saveDiscovery(session, {
+      projectId: "issuer-ui",
+      title: "PKCE required",
+      body: "Public clients must use PKCE on the token endpoint.",
+      source: "cursor",
+    });
+    expect(again.duplicate).toBe(true);
+    expect(again.memory.id).toBe(discovery.memory.id);
+
+    const decision = await MemoryService.saveDecision(session, {
+      projectId: "issuer-ui",
+      title: "Use auth code + PKCE",
+      body: "Skip implicit flow; auth code with PKCE only.",
+      source: "augment",
+    });
+    expect(decision.saved).toBe(true);
+
+    await MemoryService.updateCurrentWork(session, {
+      projectId: "issuer-ui",
+      body: "Implementing the OAuth callback page.",
+      source: "cursor",
+    });
+
+    const ctx = MemoryService.getProjectContext(session, "issuer-ui");
+    expect(ctx.discoveries).toHaveLength(1);
+    expect(ctx.decisions).toHaveLength(1);
+    expect(ctx.currentWork).toContain("OAuth callback");
+
+    const hits = await MemoryService.search(session, { query: "PKCE" });
+    expect(hits.some((hit) => hit.title.includes("PKCE"))).toBe(true);
+
+    const standup = await MemoryService.updateStandup(session, { generate: true });
+    expect(standup).toHaveLength(1);
+    expect(standup[0]?.sentence.length).toBeGreaterThan(0);
+    expect(standup[0]?.sentence.includes("\n")).toBe(false);
+
+    const formatted = ResultFormat.projectContext(ctx);
+    expect(formatted).toContain("issuer-ui");
+    expect(formatted).toContain("PKCE");
+  });
+
+  it("redacts secrets and never stores them", async () => {
+    ({ session } = openSession());
+    MemoryService.addProject(session, { id: "issuer-ui" });
+    const result = await MemoryService.saveDiscovery(session, {
+      projectId: "issuer-ui",
+      title: "Token leak",
+      body: "Do not commit sk-abcdefghijklmnopqrstuvwxyz123456 in .env",
+      source: "cli",
+    });
+    expect(result.memory.body).toContain("[REDACTED]");
+    expect(result.memory.body).not.toContain("sk-abcdefghijklmnopqrstuvwxyz123456");
+  });
+
+  it("keeps stand-up global and one sentence per project", async () => {
+    ({ session } = openSession());
+    MemoryService.addProject(session, { id: "issuer-ui" });
+    MemoryService.addProject(session, { id: "billing-api" });
+    await MemoryService.updateStandup(session, {
+      items: [
+        { projectId: "issuer-ui", sentence: "Shipping OAuth refresh. Extra sentence should be dropped!" },
+        { projectId: "billing-api", sentence: "Investigating invoice retries." },
+      ],
+    });
+    const items = MemoryService.getStandup(session);
+    expect(items).toHaveLength(2);
+    expect(items.find((i) => i.projectId === "issuer-ui")?.sentence).toBe("Shipping OAuth refresh.");
+  });
+
+  it("does not mutate the caller items array on standup update", async () => {
+    ({ session } = openSession());
+    MemoryService.addProject(session, { id: "issuer-ui" });
+    MemoryService.addProject(session, { id: "other" });
+    const items = [{ projectId: "issuer-ui", sentence: "Original caller row." }];
+    await MemoryService.updateStandup(session, {
+      items,
+      projectId: "other",
+      sentence: "Second project line.",
+    });
+    expect(items).toHaveLength(1);
+    expect(items[0]?.projectId).toBe("issuer-ui");
+  });
+
+  it("scopes cwd to the registered repo path", async () => {
+    ({ session } = openSession());
+    MemoryService.addProject(session, { id: "issuer-ui", repoPath: "/tmp/work/issuer-ui" });
+    MemoryService.addProject(session, { id: "other", repoPath: "/tmp/work/other" });
+    const id = MemoryService.resolveProjectId(session, undefined, "/tmp/work/issuer-ui/src");
+    expect(id).toBe("issuer-ui");
+  });
+
+  it("does not treat repo-two as a child of repo", () => {
+    expect(MemoryService.cwdMatchesRepo("/tmp/work/repo-two", "/tmp/work/repo")).toBe(false);
+    expect(MemoryService.cwdMatchesRepo("/tmp/work/issuer-ui/src", "/tmp/work/issuer-ui")).toBe(true);
+  });
+
+  it("does not match kind-only FTS queries", async () => {
+    ({ session } = openSession());
+    MemoryService.addProject(session, { id: "issuer-ui" });
+    await MemoryService.saveDiscovery(session, {
+      projectId: "issuer-ui",
+      title: "OAuth callback",
+      body: "The redirect URI must match exactly.",
+      source: "cli",
+    });
+    const hits = await MemoryService.search(session, { query: "discovery" });
+    expect(hits.some((hit) => hit.title === "OAuth callback")).toBe(false);
+  });
+
+  it("stores FTS content externally", async () => {
+    ({ session } = openSession());
+    MemoryService.addProject(session, { id: "issuer-ui" });
+    await MemoryService.saveDiscovery(session, {
+      projectId: "issuer-ui",
+      title: "External FTS",
+      body: "Content lives on the memories table.",
+      source: "cli",
+    });
+    await MemoryService.updateCurrentWork(session, {
+      projectId: "issuer-ui",
+      body: "Searchable current work note.",
+    });
+    const sql = session.sqlite.prepare("SELECT sql FROM sqlite_master WHERE name = 'memory_fts'").get() as {
+      sql: string;
+    };
+    expect(sql.sql).toContain("content='memories'");
+    const shadow = session.sqlite.prepare("SELECT name FROM sqlite_master WHERE name = 'memory_fts_content'").get();
+    expect(Boolean(shadow)).toBe(false);
+    const hits = await MemoryService.search(session, { query: "memories table" });
+    expect(hits.some((hit) => hit.title === "External FTS")).toBe(true);
+    const workHits = await MemoryService.search(session, { query: "Searchable current", kind: "current_work" });
+    expect(workHits.some((hit) => hit.kind === "current_work")).toBe(true);
+  });
+
+  it("edits and deletes memories and can remove a project", async () => {
+    ({ session } = openSession());
+    MemoryService.addProject(session, { id: "issuer-ui" });
+    const saved = await MemoryService.saveDiscovery(session, {
+      projectId: "issuer-ui",
+      title: "Old title",
+      body: "Old body that will change.",
+      source: "cli",
+    });
+    const edited = await MemoryService.editMemory(session, {
+      id: saved.memory.id,
+      title: "New title",
+      body: "New body after the edit.",
+    });
+    expect(edited.title).toBe("New title");
+    expect(edited.body).toBe("New body after the edit.");
+    await MemoryService.deleteMemory(session, saved.memory.id);
+    const hits = await MemoryService.search(session, { query: "New body", projectId: "issuer-ui" });
+    expect(hits).toHaveLength(0);
+    await MemoryService.updateCurrentWork(session, { projectId: "issuer-ui", body: "WIP" });
+    await MemoryService.clearCurrentWork(session, "issuer-ui");
+    expect(MemoryService.getCurrentWork(session, "issuer-ui").currentWork).toBe("");
+    await MemoryService.removeProject(session, "issuer-ui");
+    expect(MemoryService.listProjects(session)).toHaveLength(0);
+  });
+
+  it("throws when a project row is missing instead of asserting non-null", async () => {
+    ({ session } = openSession());
+    MemoryService.addProject(session, { id: "issuer-ui" });
+    await MemoryService.removeProject(session, "issuer-ui");
+    let threw = false;
+    try {
+      MemoryService.requireProject(session, "issuer-ui");
+    } catch (error) {
+      threw = error instanceof Error && error.message.includes("Unknown project");
+    }
+    expect(threw).toBe(true);
+  });
+
+  it("includes AI errors on doctor output", async () => {
+    ({ session } = openSession());
+    OpenAiLayer.lastError = "[shared-context] openai /chat/completions HTTP 401";
+    const health = await MemoryService.doctor(session);
+    expect(health.healthy).toBe(true);
+    expect(health.ai).toBe("degraded");
+    expect(health.aiError).toContain("HTTP 401");
+    OpenAiLayer.lastError = null;
+  });
+
+  it("does not sink un-embedded FTS hits when re-ranking", () => {
+    expect(MemoryService.blendedScore(0, null)).toBeGreaterThan(MemoryService.blendedScore(5, 0));
+    expect(MemoryService.blendedScore(0, null)).toBeGreaterThan(MemoryService.blendedScore(0, 0));
+  });
+
+  it("keeps FTS rows across session open using triggers instead of a full rebuild", async () => {
+    const opened = openSession();
+    session = opened.session;
+    MemoryService.addProject(session, { id: "issuer-ui" });
+    await MemoryService.saveDiscovery(session, {
+      projectId: "issuer-ui",
+      title: "Trigger path",
+      body: "Searchable via FTS triggers.",
+      source: "cli",
+    });
+    const triggers = session.sqlite
+      .prepare("SELECT name FROM sqlite_master WHERE type = 'trigger' AND name LIKE 'memories_%'")
+      .all() as { name: string }[];
+    expect(triggers.length).toBeGreaterThan(0);
+    const before = session.sqlite.prepare("SELECT count(*) AS c FROM memory_fts").get() as { c: number };
+    session.close();
+    session = ContextSession.open(opened.home);
+    const after = session.sqlite.prepare("SELECT count(*) AS c FROM memory_fts").get() as { c: number };
+    expect(after.c).toBe(before.c);
+    const hits = await MemoryService.search(session, { query: "Searchable" });
+    expect(hits.some((hit) => hit.title === "Trigger path")).toBe(true);
+  });
+
+  it("bounds semantic duplicate scans to recent embedded rows", () => {
+    expect(MemoryService.SEMANTIC_SCAN_LIMIT).toBe(200);
+  });
+
+  it("embeds a memory only once when AI is enabled", async () => {
+    ({ session } = openSession());
+    MemoryService.addProject(session, { id: "issuer-ui" });
+    const prevKey = process.env.OPENAI_API_KEY;
+    const prevFetch = OpenAiLayer.fetchFn;
+    process.env.OPENAI_API_KEY = "sk-test";
+    let embeds = 0;
+    OpenAiLayer.fetchFn = (async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("/embeddings")) {
+        embeds += 1;
+        return new Response(JSON.stringify({ data: [{ embedding: [1, 0, 0] }] }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      }
+      return new Response(JSON.stringify({ choices: [{ message: { content: "discovery" } }] }), { status: 200 });
+    }) as typeof fetch;
+    try {
+      await MemoryService.saveDiscovery(session, {
+        projectId: "issuer-ui",
+        title: "Once",
+        body: "Embed this text a single time.",
+        source: "cli",
+      });
+      expect(embeds).toBe(1);
+    } finally {
+      OpenAiLayer.fetchFn = prevFetch;
+      if (prevKey === undefined) {
+        delete process.env.OPENAI_API_KEY;
+      } else {
+        process.env.OPENAI_API_KEY = prevKey;
+      }
+    }
+  });
+
+  it("orders search hits by blended cosine when embeddings exist", async () => {
+    ({ session } = openSession());
+    MemoryService.addProject(session, { id: "issuer-ui" });
+    await MemoryService.saveDiscovery(session, {
+      projectId: "issuer-ui",
+      title: "Low cosine",
+      body: "oauth refresh token handling",
+      source: "cli",
+    });
+    await MemoryService.saveDiscovery(session, {
+      projectId: "issuer-ui",
+      title: "High cosine",
+      body: "oauth refresh token handling extra",
+      source: "cli",
+    });
+    session.sqlite
+      .prepare("UPDATE memories SET embedding = ? WHERE title = ?")
+      .run(JSON.stringify([0, 1]), "Low cosine");
+    session.sqlite
+      .prepare("UPDATE memories SET embedding = ? WHERE title = ?")
+      .run(JSON.stringify([1, 0]), "High cosine");
+    const prevKey = process.env.OPENAI_API_KEY;
+    const prevFetch = OpenAiLayer.fetchFn;
+    process.env.OPENAI_API_KEY = "sk-test";
+    OpenAiLayer.fetchFn = (async (input: RequestInfo | URL) => {
+      if (String(input).includes("/embeddings")) {
+        return new Response(JSON.stringify({ data: [{ embedding: [1, 0] }] }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      }
+      return new Response("{}", { status: 200 });
+    }) as typeof fetch;
+    try {
+      const hits = await MemoryService.search(session, { query: "oauth refresh" });
+      expect(hits[0]?.title).toBe("High cosine");
+      expect(hits.some((hit) => hit.title === "Low cosine")).toBe(true);
+    } finally {
+      OpenAiLayer.fetchFn = prevFetch;
+      if (prevKey === undefined) {
+        delete process.env.OPENAI_API_KEY;
+      } else {
+        process.env.OPENAI_API_KEY = prevKey;
+      }
+    }
+  });
+
+  it("allows concurrent writers on the same sqlite file", async () => {
+    const opened = openSession();
+    session = opened.session;
+    MemoryService.addProject(session, { id: "issuer-ui" });
+    const other = ContextSession.open(opened.home);
+    try {
+      await Promise.all([
+        MemoryService.saveDiscovery(session, {
+          projectId: "issuer-ui",
+          title: "Writer A",
+          body: "concurrent alpha unique-term",
+          source: "cli",
+        }),
+        MemoryService.saveDiscovery(other, {
+          projectId: "issuer-ui",
+          title: "Writer B",
+          body: "concurrent beta unique-term",
+          source: "cli",
+        }),
+      ]);
+      const hits = await MemoryService.search(session, { query: "unique-term" });
+      expect(hits.some((hit) => hit.title === "Writer A")).toBe(true);
+      expect(hits.some((hit) => hit.title === "Writer B")).toBe(true);
+    } finally {
+      other.close();
+    }
+  });
+
+  it("searches punctuation-heavy FTS queries without error", async () => {
+    ({ session } = openSession());
+    MemoryService.addProject(session, { id: "issuer-ui" });
+    await MemoryService.saveDiscovery(session, {
+      projectId: "issuer-ui",
+      title: "Compiler flags",
+      body: "Use -O2 and C++ with NEAR matching.",
+      source: "cli",
+    });
+    const hits = await MemoryService.search(session, { query: "C++ -O2" });
+    expect(hits.some((hit) => hit.title === "Compiler flags")).toBe(true);
+  });
+});

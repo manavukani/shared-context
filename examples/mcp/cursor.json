@@ -1,0 +1,7 @@
+{
+  "mcpServers": {
+    "shared-context": {
+      "command": "shared-context-mcp"
+    }
+  }
+}

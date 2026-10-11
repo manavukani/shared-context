@@ -1,0 +1,9 @@
+{
+  "version": 1,
+  "ai": {
+    "enabled": true,
+    "model": "gpt-4o-mini",
+    "embeddingModel": "text-embedding-3-small",
+    "baseUrl": "https://api.openai.com/v1"
+  }
+}

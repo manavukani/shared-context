@@ -1,0 +1,56 @@
+{
+  "name": "shared-context",
+  "version": "1.0.0",
+  "description": "Local-first shared AI context layer (MCP + CLI) for Claude Code, Cursor, and Augment Code.",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "bin": {
+    "context": "./dist/cli/index.js",
+    "shared-context-mcp": "./dist/mcp/index.js"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "start:mcp": "node dist/mcp/index.js",
+    "context": "node dist/cli/index.js",
+    "test": "tsx --test test/unit/*.test.ts test/integration/*.test.ts",
+    "typecheck": "tsc -p tsconfig.test.json --noEmit",
+    "format": "prettier --write .",
+    "lint": "prettier --check .",
+    "migrate": "node dist/db/migrate-cli.js",
+    "migrate:generate": "drizzle-kit generate",
+    "prepare": "npm run build",
+    "prepublishOnly": "npm run build"
+  },
+  "files": [
+    "dist",
+    "drizzle",
+    "examples",
+    "README.md",
+    "ARCHITECTURE.md"
+  ],
+  "keywords": [
+    "mcp",
+    "cli",
+    "sqlite",
+    "ai-context"
+  ],
+  "license": "MIT",
+  "dependencies": {
+    "@modelcontextprotocol/server": "^2.0.0",
+    "better-sqlite3": "^12.2.0",
+    "commander": "^14.0.0",
+    "drizzle-orm": "^0.44.5",
+    "zod": "^4.1.5"
+  },
+  "devDependencies": {
+    "@modelcontextprotocol/client": "^2.0.0",
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/node": "^24.3.0",
+    "drizzle-kit": "^0.31.4",
+    "prettier": "^3.9.6",
+    "tsx": "^4.20.5",
+    "typescript": "^5.9.2"
+  }
+}

@@ -1,0 +1,72 @@
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { dirname } from "node:path";
+
+export type AiConfig = {
+  enabled: boolean;
+  model: string;
+  embeddingModel: string;
+  baseUrl?: string;
+};
+
+export type AppConfigData = {
+  version: 1;
+  ai: AiConfig;
+};
+
+const DEFAULT_CONFIG: AppConfigData = {
+  version: 1,
+  ai: {
+    enabled: true,
+    model: "gpt-4o-mini",
+    embeddingModel: "text-embedding-3-small",
+  },
+};
+
+export class AppConfig {
+  constructor(
+    readonly path: string,
+    readonly data: AppConfigData,
+    readonly error: string | null = null,
+  ) {}
+
+  static defaults(): AppConfigData {
+    return structuredClone(DEFAULT_CONFIG);
+  }
+
+  static load(path: string): AppConfig {
+    if (!existsSync(path)) {
+      return new AppConfig(path, AppConfig.defaults());
+    }
+    try {
+      const parsed = JSON.parse(readFileSync(path, "utf8")) as Partial<AppConfigData> & {
+        ai?: Partial<AiConfig> & { enabled?: unknown };
+      };
+      if (parsed.ai && parsed.ai.enabled !== undefined && typeof parsed.ai.enabled !== "boolean") {
+        throw new Error("ai.enabled must be a boolean");
+      }
+      const data: AppConfigData = {
+        version: 1,
+        ai: {
+          enabled: parsed.ai?.enabled ?? true,
+          model: parsed.ai?.model ?? DEFAULT_CONFIG.ai.model,
+          embeddingModel: parsed.ai?.embeddingModel ?? DEFAULT_CONFIG.ai.embeddingModel,
+          baseUrl: typeof parsed.ai?.baseUrl === "string" ? parsed.ai.baseUrl : undefined,
+        },
+      };
+      return new AppConfig(path, data);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      return new AppConfig(path, AppConfig.defaults(), message);
+    }
+  }
+
+  static write(path: string, data: AppConfigData = AppConfig.defaults()): AppConfig {
+    mkdirSync(dirname(path), { recursive: true });
+    writeFileSync(path, `${JSON.stringify(data, null, 2)}\n`, "utf8");
+    return new AppConfig(path, data);
+  }
+
+  get aiEnabled(): boolean {
+    return this.data.ai.enabled === true;
+  }
+}
